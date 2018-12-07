@@ -33,8 +33,41 @@ def createDataSetName(nSq, nPa, nWPa):
 def estNrStates(nSq, nPa, nWPa):
     return (perm(nSq, nPa)/((nWPa)*(nPa-nWPa)))*(nSq - nPa - 2) * (nSq-nPa-2-1)
 
-t0 = time.time()
+#######################
+#
+#    Print progress
+#
+#######################
+def printProgress(t0, t1, iA, lenA, lastiA, iS, dsetSize, saving):
+    prog = round(100*iA/lenA, 5)
+    t2 = time.time()
+    timeElapsed = t2 - t0
+    if timeElapsed > 3600*24:
+        timeElapsed = str("%.3f" %round(timeElapsed/3600./24, 3) + " days.")
+    elif timeElapsed > 3600:
+        timeElapsed = str("%.3f" %round(timeElapsed/3600., 3) + " hours.")
+    else:
+        timeElapsed = str("%.3f" %round(timeElapsed, 3) + " seconds.")
+    # timeLeft = timeElapsed*(lenA-iA)/(iA+1)
+    timeLeft = (t2-t1)*(lenA - iA)/(iA-lastiA+1)
+    lastiA = iA
+    t1 = time.time()
+    if timeLeft > 3600*24:
+        timeLeftFormated = str("%.3f" % float(round(timeLeft/3600/24,3))) + ' days.'
+    else:
+        timeLeftFormated = str("%.3f" % float(round(timeLeft/3600,3))) + ' hours.'
+        # timeLeftFormated = str("%.3f" % round(prog,3))
+    restart_line()
+    if saving:
+        sys.stdout.write("Progress: " + str("%.3f" % round(prog,3)) + '%. Runtime: ' + timeElapsed + " Time left: " + timeLeftFormated + " At state: %.3e" %Decimal(iS) + "/ %.3e" %Decimal(dsetSize) + ". ==>> Saving to disk")
+    else:
+        sys.stdout.write("                                                                                                                       ")
+        restart_line()
+        sys.stdout.write("Progress: " + str("%.3f" % round(prog,3)) + '%. Runtime: ' + timeElapsed + " Time left: " + timeLeftFormated + " At state: %.3e" %Decimal(iS) + "/ %.3e" %Decimal(dsetSize))
+    sys.stdout.flush()
+
 def run_program():
+    t0 = time.time()
     ####################
     #
     #   Signal Handler
@@ -52,7 +85,9 @@ def run_program():
                 sys.exit(1)
 
         except KeyboardInterrupt:
-            print("\n Ok ok, quitting")
+            print("\nOk ok, quitting")
+            print("Flushing data to disk")
+            f.close()
             sys.exit(1)
 
         # restore the exit gracefully handler here
@@ -60,14 +95,18 @@ def run_program():
 
     # store the original SIGINT handler
     original_sigint = signal.getsignal(signal.SIGINT)
-
     signal.signal(signal.SIGINT, exit_gracefully)
+
 
     #######################
     #
     #    Main Program
     #
     #######################
+    iA = 0 # at A number iA
+    iS = 0 # finished generating state number iS
+    idset = 0 # dataset full uptil idset
+    S = []
 
     # ------------------------------ GENERATE COMBINATIONS ------------------------------
     print("Generating combinations")
@@ -80,14 +119,18 @@ def run_program():
     Debug("Length of P: ", len(P))
     Debug("Length of W: ", len(W))
     Debug("Total number of states: ", str(dsetSize) + " = %.2E" %Decimal(dsetSize))
-    Debug("Estimated total number of states: ", estNrStates(nSq, nPa, nWPa))
+    Debug("Estimated total number of states: ", str("%.3f" %Decimal(estNrStates(nSq, nPa, nWPa))))
 
     # ------------------------------ INITIALIZE DATASET FILE ------------------------------
     # ----- delete file
-    # try:
-    #     os.remove(fileName)
-    # except OSError:
-    #     pass
+    if delH5File:
+        action = input("Do you really want to delete:  " + str(fileName) + " ? [y/n]")
+        if action == 'y' or action == 'Y':
+            try:
+                os.remove(fileName)
+                print("File deleted")
+            except OSError:
+                pass
     # ----- touch file if it doesn't exist
     open(fileName, 'a').close()
 
@@ -111,43 +154,61 @@ def run_program():
     length = len(A)
     percentageUpdateInterval = length / progressDivisions
     Debug("Percentage printed at every iA which is a multiple of: ", percentageUpdateInterval)
-    iA = 0 # at A number iA
-    for a in A:
-        # ------------------------------ RESIZE DATASET ------------------------------
-        # if j >= dsetCurrentSize:
-        #     dsetCurrentSize += int(dsetCurrentSize/10)
-        #     dset.resize((dsetCurrentSize,n))
-
-        # ------------------------------ SHOW PROGESS ------------------------------
-        if iA%int(percentageUpdateInterval) == 0:
-            prog = round(100*iA/len(A), 5)
-            t1 = time.time()
-            timeElapsed = t1 - t0
-            timeLeft = timeElapsed*(len(A)-iA)/(iA+1)
-            restart_line()
-            if timeLeft > 3600*24:
-                timeLeftFormated = str(round(timeLeft/3600/24,3)) + ' days.'
-            else:
-                timeLeftFormated = str(round(timeLeft/3600,3)) + ' hours.'
-            sys.stdout.write("Progress: " + str(round(prog,3)) + ' percent. Time elapsed: ' + str(int(timeElapsed)) + "s. Time left: " + timeLeftFormated + " Currently at A: " + str(iA))
-            sys.stdout.flush()
-        for p in P:
-            K = [k for k in [i for i in range(nPi)] if k not in p]
-            for w in W:
-                s1 = [0] * nPi
-                b = [k for k in [i for i in range(nPa)] if k not in w]
-                for i in range(nPa):
-                    if i < nWPa:
-                        s1[i] = a[p[w[i]]]
-                    else:
-                        s1[i] = a[p[b[i-nWPa]]]
-                s2 = s1.copy()
-                s1[nPa + 1] = a[K[1]]
-                s1[nPa] = a[K[0]]
-                s2[nPa] = a[K[1]]
-                s2[nPa + 1] = a[K[0]]
-        iA += 1
     t1 = time.time()
+    lastiA = iA
+    if generateData:
+        for a in A:
+            # ------------------------------ RESIZE DATASET ------------------------------
+            # if j >= dsetCurrentSize:
+            #     dsetCurrentSize += int(dsetCurrentSize/10)
+            #     dset.resize((dsetCurrentSize,n))
+
+            # ------------------------------ SHOW PROGESS ------------------------------
+            if iA%int(percentageUpdateInterval) == 0:
+                printProgress(t0, t1, iA, len(A), lastiA, iS, dsetSize, False)
+            for p in P:
+                # ------------------------------ FLUSH TO DISK ------------------------------
+                if len(S) >= memSize:
+                    if saveToDisk:
+                        # for i in range(30):
+                        #     sys.stdout.write("\b")
+                        printProgress(t0, t1, iA, len(A), lastiA, iS, dsetSize, True)
+                        dset[idset:idset + len(S)] = S
+                        dset.flush()
+                        idset += len(S)
+                        S = []
+                        printProgress(t0, t1, iA, len(A), lastiA, iS, dsetSize, False)
+                        # restart_line()
+                        # for i in saveMessage:
+                        #     sys.stdout.write('\b')
+                K = [k for k in [i for i in range(nPi)] if k not in p]
+                for w in W:
+                    s1 = [0] * nPi
+                    b = [k for k in [i for i in range(nPa)] if k not in w]
+                    for i in range(nPa):
+                        if i < nWPa:
+                            s1[i] = a[p[w[i]]]
+                        else:
+                            s1[i] = a[p[b[i-nWPa]]]
+                    s2 = s1.copy()
+                    s1[nPa + 1] = a[K[1]]
+                    s1[nPa] = a[K[0]]
+                    s2[nPa] = a[K[1]]
+                    s2[nPa + 1] = a[K[0]]
+                    S.append(s1)
+                    S.append(s2)
+                    iS += 2
+            iA += 1
+    if saveToDisk:
+        print("\nSaving final states to disk...")
+        dset[idset:idset + len(S)] = S
+        dset.flush()
+        idset += len(S)
+        S = []
+    # restart_line()
+
+    t1 = time.time()
+    f.close()
     print("\nTotal time: ", round(t1-t0,1), " seconds")
 
 
@@ -160,12 +221,16 @@ if __name__ == '__main__':
     #
     #######################
 
-    nSq = 30 # number of squares
-    nPi = 5 # number of pieces
+    nSq = 64 # number of squares
+    nPi = 6 # number of pieces
     nPa = nPi - 2 # number of pawns
-    nWPa = 1 # number of white pawns
-    progressDivisions = 100 # update progress progressDivisions times during a whole epoch
+    nWPa = 2 # number of white pawns
+    progressDivisions = 100000 # update progress progressDivisions times during the whole epoch
+    memSize = int(1e6) # number of states to keep in memory before writing to disk
     fileName = "AllStates_7-int-Vec.hdf5"
     dataSetName = createDataSetName(nSq, nPa,nWPa)
+    generateData = True
+    saveToDisk = True
+    delH5File = True
 
     run_program()
