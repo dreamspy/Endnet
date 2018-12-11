@@ -118,8 +118,18 @@ def run_program():
             wdl = wdlCreator(dataSetWdlName, states)
             Db("...done",'')
         return wdl
+    def openWdlDataset():
+        if dataSetWdlName in f:
+            return f[dataSetWdlName]
+        else:
+            Db("Dataset doesn't exist. Abort mission.")
+            sys.exit(1)
     x = 1
-    wdl = createWdlDataset()
+    if overwriteDS:
+        wdl = createWdlDataset()
+    else:
+        wdl = openWdlDataset()
+
 
     ##############################
     #
@@ -132,39 +142,76 @@ def run_program():
     t1 = time.time()
     percentageUpdateInterval = l / progressDivisions
     Wtemp = []
-    wdlLocation = 0
-    for j in range(len(states)):
+    Stemp = []
+    wdlLocation = startLocation
+    # tt0 = time.time()
+
+
+    # ------------------------------ Time Machines ------------------------------
+    tFlush = 0.
+    tBoardNone = 0.
+    tStateLoad = 0.
+    tBoardPieces = 0.
+    tBoardTotal = 0.
+    tWdl = 0.
+    tTotal = 0.
+    counts = 50000
+
+    for j in range(startLocation, len(states)):
+        tt0 = time.time()
 
         # ------------------------------ FLUSH TO DISK ------------------------------
-        if len(Wtemp) >= memSize:
+        if len(Wtemp) >= memSizeWdl:
+            tt1 = time.time()
             if saveToDisk:
                 printProgress(j, l, True)
                 wdl[wdlLocation:wdlLocation + len(Wtemp)] = np.array(Wtemp).reshape((len(Wtemp),1))
                 wdl.flush()
                 wdlLocation += len(Wtemp)
                 Wtemp = []
+            tt2 = time.time()
+            # dt = tt2-tt1
+            tFlush += tt2-tt1
+            # db("Flushing: ", dt)
 
         # ------------------------------ PRINT PROCESS ------------------------------
         if j%int(percentageUpdateInterval) == 0:
             printProgress(j, l, False)
 
         # ------------------------------ CREATE BOARD FROM STATE ------------------------------
+        tt1 = time.time()
         state = states[j]
+        tt2 = time.time()
+        # dt = tt2-tt1
+        tStateLoad += tt2-tt1
+        # db("Loading state from disk: ", dt)
+        tt2 = time.time()
         board = chess.Board(None)
+        tt3 = time.time()
+        tBoardNone += tt3-tt2
+        # db("Create empty board: ", dt)
+        tt3 = time.time()
 
         for i in range(len(state)-2):
-            # print(i)
             if i < nWPa:
-                # db('1: ', state[i])
                 board.set_piece_at(state[i], chess.Piece(1, True))
             else:
-                # db('2: ', state[i])
                 board.set_piece_at(state[i], chess.Piece(1, False))
         board.set_piece_at(state[nPi-2], chess.Piece(6, True))
         board.set_piece_at(state[nPi-1], chess.Piece(6, False))
+        tt4 = time.time()
+        # dt = tt4-tt3
+        # print(dt)
+        tBoardPieces += tt4-tt3
+        # print(tBoardPieces)
+        # db("Fill in pieces: ", dt)
+        # dt = tt4 - tt1
+        tBoardTotal = tt4 - tt1
+        # db("Total board creating phase: ", dt)
 
 
         # ------------------------------ EXTRACT WDL VALUE ------------------------------
+        tt1= time.time()
         wdlError = False
         wdlNumber = 0
         if board.is_valid():
@@ -174,14 +221,65 @@ def run_program():
                 wdlError = True
                 pass
         if wdlError:
-            # wdl[j] = 11
             Wtemp.append(11)
         else:
-            # wdl[j] = wdlNumber
             Wtemp.append(wdlNumber)
-        db(str("Syzygy lookup for board " + str(state) + " " + board.board_fen() + ' WDL: ' + str(wdl[j])), '')
-        db(board, '')
-    db('Done','')
+        # db(str("Syzygy lookup for board " + str(state) + " " + board.board_fen() + ' WDL: ' + str(wdl[j])), '')
+        # db(board, '')
+        tt2 = time.time()
+        # dt = tt2 - tt1
+        tWdl += tt2 - tt1
+        # db("WDL extracting: ", dt)
+        # if j > 22000: break
+        ttT = time.time()
+        # dt = ttT - tt0
+        tTotal += ttT - tt0
+        # Db("========Total time: ", dt)
+        if j > counts:
+            print("Flush: ", tFlush)
+            print("StateLoad: ", tStateLoad)
+            print("BoardNone: ", tBoardNone)
+            print("BoardPieces: ", tBoardPieces)
+            print("BoardTotal: ", tBoardTotal)
+            print("WDL: ", tWdl)
+            print("Total: ", tTotal)
+            print()
+            print("Flush: ", tFlush/counts)
+            print("StateLoad: ", tStateLoad/counts)
+            print("BoardNone: ", tBoardNone/counts)
+            print("BoardPieces: ", tBoardPieces/counts)
+            print("BoardTotal: ", tBoardTotal/counts)
+            print("WDL: ", tWdl/counts)
+            print("Total: ", tTotal/counts)
+            print()
+            counts = tTotal
+            print("Flush: ", tFlush/counts)
+            print("StateLoad: ", tStateLoad/counts)
+            print("BoardNone: ", tBoardNone/counts)
+            print("BoardPieces: ", tBoardPieces/counts)
+            print("BoardTotal: ", tBoardTotal/counts)
+            print("WDL: ", tWdl/counts)
+            print("Total: ", tTotal/counts)
+            break
+    # ttT = time.time()
+    # dt = ttT - tt0
+    # Db("========Total time: ", dt)
+    # Db("========Total time: ", (ttT - tt0)/22000)
+    tFlush = 0.
+    tBoard = 0.
+    tBoardPieces = 0.
+    tBoardTotal = 0.
+    tWdl = 0.
+    tTotal = 0.
+    counts = 1000
+    sys.exit()
+
+    # ------------------------------ FLUSH TO DISK ------------------------------
+    if saveToDisk:
+        printProgress(j, l, True)
+        wdl[wdlLocation:wdlLocation + len(Wtemp)] = np.array(Wtemp).reshape((len(Wtemp),1))
+        wdl.flush()
+    Db('\nDone','')
 
 
 if __name__ == '__main__':
@@ -197,6 +295,8 @@ if __name__ == '__main__':
     #   Initial value: 10
     #   Invalid boardstate value: 11
 
+    # lacking all from 15247499
+
     #######################
     #
     #       Settings
@@ -204,19 +304,31 @@ if __name__ == '__main__':
     #######################
 
     fileName = 'AllStates_7-int-Vec.hdf5'
-    dataSetName = '4PpKk'
-    dataSetWdlName = '4PpKk-Wdl'
-    nPi = 4
-    nPa = 2
-    nWPa = 1
+    dataSetName = '5PPpKk'
+    dataSetWdlName = '5PPpKk-Wdl'
+    nPi = 5
+    nPa = 3
+    nWPa = 2
     confirmQuit = True
-    confirmDSOverwrite = True
+    confirmDSOverwrite = False
+    overwriteDS = True # if False, then append to dataset
     saveToDisk = True
     progressDivisions = 10000
-    debug = False
+    debug = True
     Debug = True
-    memSize = 10000
+    memSizeWdl = 1000
+    memeSizeStates = 1000
+    startLocation = 0
+
+
+
+
+
+
 
     t0 = time.time()
     t1 = time.time()
     run_program()
+
+
+
