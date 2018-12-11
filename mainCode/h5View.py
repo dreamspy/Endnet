@@ -76,6 +76,17 @@ def loadDataSet(f):
             break
     return dataset
 
+def checkForTens(dataset):
+    d = 1000
+    l = len(dataset)
+    p = int(l/d)
+
+    for i in range(l):
+        if dataset[i]==10:
+            print('i: ', i, ' dataset[{}]'.format(i), dataset[i])
+        if i%p==0:
+            print(round(i/l,3))
+
 def help():
 
     Db("Usage" +
