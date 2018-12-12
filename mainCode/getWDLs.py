@@ -43,6 +43,8 @@ def printProgress(j, l, saving):
         timeElapsed = str("%.3f" %round(timeElapsed/3600./24, 3) + " days.")
     elif timeElapsed > 3600:
         timeElapsed = str("%.3f" %round(timeElapsed/3600., 3) + " hours.")
+    elif timeElapsed > 60:
+        timeElapsed = str("%.3f" %round(timeElapsed/60, 3) + " minutes.")
     else:
         timeElapsed = str("%.3f" %round(timeElapsed, 3) + " seconds.")
 
@@ -50,7 +52,8 @@ def printProgress(j, l, saving):
         timeLeftFormated = str("%.3f" % float(round(timeLeft/3600/24,3))) + ' days.'
     elif timeLeft > 3600:
         timeLeftFormated = str("%.3f" % float(round(timeLeft/3600,3))) + ' hours.'
-        # timeLeftFormated = str("%.3f" % round(prog,3))
+    elif timeLeft > 60:
+        timeLeftFormated = str("%.3f" % float(round(timeLeft/60,3))) + ' minutes.'
     else:
         timeLeftFormated = str("%.3f" % float(round(timeLeft,3))) + ' seconds.'
 
@@ -279,8 +282,8 @@ if __name__ == '__main__':
     #######################
 
     fileName = 'AllStates_7-int-Vec.hdf5'
-    dataSetName = '3PKk'
-    dataSetWdlName = '3PKk-Wdl-Buffered'
+    dataSetName = '4PpKk'
+    dataSetWdlName = '4PpKk-Wdl-Buffered'
     nPi = int(dataSetName[0])
     nPa = nPi - 2
     # nPi = 3
@@ -297,11 +300,11 @@ if __name__ == '__main__':
     memSizeStates = 10000
     startLocation = 0
 
-
-
-
-
-
+    #######################
+    #
+    #     Run Program
+    #
+    #######################
 
     t0 = time.time()
     t1 = time.time()
