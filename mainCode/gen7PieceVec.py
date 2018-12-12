@@ -31,7 +31,10 @@ def createDataSetName(nSq, nPa, nWPa):
     return str(nSq) + 'K' + nWPa*'P' + 'v' + 'K' + (nPa-nWPa)*'P'
 
 def estNrStates(nSq, nPa, nWPa):
-    return (perm(nSq, nPa)/((nWPa)*(nPa-nWPa)))*(nSq - nPa - 2) * (nSq-nPa-2-1)
+    blackPawnMultiplicity = nPa - nWPa
+    if blackPawnMultiplicity == 0:
+        blackPawnMultiplicity = 1
+    return (perm(nSq, nPa)/((nWPa)*blackPawnMultiplicity))*(nSq - nPa - 2) * (nSq-nPa-2-1)
 
 #######################
 #
@@ -242,16 +245,16 @@ if __name__ == '__main__':
     #######################
 
     nSq = 64 # number of squares
-    nPi = 6 # number of pieces
+    nPi = 3 # number of pieces
     nPa = nPi - 2 # number of pawns
-    nWPa = 2 # number of white pawns
-    progressDivisions = 100000 # update progress progressDivisions times during the whole epoch
-    memSize = int(1e6) # number of states to keep in memory before writing to disk
+    nWPa = 1 # number of white pawns
+    progressDivisions = 1000 # update progress progressDivisions times during the whole epoch
+    memSize = int(1e3) # number of states to keep in memory before writing to disk
     fileName = "AllStates_7-int-Vec.hdf5"
     dataSetName = createDataSetName(nSq, nPa,nWPa)
     generateData = True
     saveToDisk = True
-    delH5File = True
+    delH5File = False
 
 
     run_program()
