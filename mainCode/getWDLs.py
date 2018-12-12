@@ -25,27 +25,34 @@ def printProgress(j, l, saving):
     t2 = time.time()
     timeElapsed = t2 - t1
     timeLeft = timeElapsed * (l - j) / (j + 1)
+
     if timeElapsed > 3600*24:
         timeElapsed = str("%.3f" %round(timeElapsed/3600./24, 3) + " days.")
     elif timeElapsed > 3600:
         timeElapsed = str("%.3f" %round(timeElapsed/3600., 3) + " hours.")
     else:
         timeElapsed = str("%.3f" %round(timeElapsed, 3) + " seconds.")
+
     if timeLeft > 3600*24:
         timeLeftFormated = str("%.3f" % float(round(timeLeft/3600/24,3))) + ' days.'
-    else:
+    elif timeLeft > 3600:
         timeLeftFormated = str("%.3f" % float(round(timeLeft/3600,3))) + ' hours.'
         # timeLeftFormated = str("%.3f" % round(prog,3))
+    else:
+        timeLeftFormated = str("%.3f" % float(round(timeLeft,3))) + ' seconds.'
+
     restart_line()
+
     if saving:
         sys.stdout.write("Progress: " + str("%.3f" % round(prog,3)) + '%. Runtime: ' + timeElapsed + " Time left: " + timeLeftFormated + " At state: %.3e" %Decimal(j) + "/ %.3e" %Decimal(l) + ". ==>> Saving to disk")
     else:
         sys.stdout.write("                                                                                                                       ")
         restart_line()
         sys.stdout.write("Progress: " + str("%.3f" % round(prog,3)) + '%. Runtime: ' + timeElapsed + " Time left: " + timeLeftFormated + " At state: %.3e" %Decimal(j) + "/ %.3e" %Decimal(l))
+
     sys.stdout.flush()
 
-def run_program():
+def run_program(memSizeStates):
     ####################
     #
     #   Signal Handler
@@ -139,11 +146,11 @@ def run_program():
     tablebase = chess.syzygy.open_tablebase("syzygy")
     n = m = 0
     l = len(states)
-    t1 = time.time()
     percentageUpdateInterval = l / progressDivisions
-    Wtemp = []
-    Stemp = []
+    wTemp = []
+    sTemp = []
     wdlLocation = startLocation
+    stateLocation = startLocation
     # tt0 = time.time()
 
 
@@ -155,20 +162,35 @@ def run_program():
     tBoardTotal = 0.
     tWdl = 0.
     tTotal = 0.
-    counts = 50000
+    counts = 500000
 
+    t1 = time.time()
     for j in range(startLocation, len(states)):
         tt0 = time.time()
 
+        # ------------------------------ READ NEXT STATES ------------------------------
+        if j%memSizeStates == 0:
+            # statesLeft = l - stateLocation
+            # if statesLeft < memSizeStates:
+            #     memSizeStates = statesLeft
+            sTemp = states[stateLocation : stateLocation + memSizeStates]
+            stateLocation += memSizeStates
+            sTempCounter = 0
+            # print("\n\n\n Next states")
+            # print(sTemp)
+
         # ------------------------------ FLUSH TO DISK ------------------------------
-        if len(Wtemp) >= memSizeWdl:
+        if len(wTemp) >= memSizeWdl:
+            # print("\n\n\n flushing wTemp")
+            # print(wTemp)
+
             tt1 = time.time()
             if saveToDisk:
                 printProgress(j, l, True)
-                wdl[wdlLocation:wdlLocation + len(Wtemp)] = np.array(Wtemp).reshape((len(Wtemp),1))
+                wdl[wdlLocation:wdlLocation + len(wTemp)] = np.array(wTemp).reshape((len(wTemp),1))
                 wdl.flush()
-                wdlLocation += len(Wtemp)
-                Wtemp = []
+                wdlLocation += len(wTemp)
+                wTemp = []
             tt2 = time.time()
             # dt = tt2-tt1
             tFlush += tt2-tt1
@@ -178,9 +200,16 @@ def run_program():
         if j%int(percentageUpdateInterval) == 0:
             printProgress(j, l, False)
 
+
         # ------------------------------ CREATE BOARD FROM STATE ------------------------------
         tt1 = time.time()
-        state = states[j]
+        if j > 238000:
+            print(j, sTempCounter, len(sTemp))
+        state = sTemp[sTempCounter]
+        sTempCounter += 1
+        # stateSeq= states[j]
+        # print("BuffState", state)
+        # print("SeqState", stateSeq)
         tt2 = time.time()
         # dt = tt2-tt1
         tStateLoad += tt2-tt1
@@ -221,9 +250,9 @@ def run_program():
                 wdlError = True
                 pass
         if wdlError:
-            Wtemp.append(11)
+            wTemp.append(11)
         else:
-            Wtemp.append(wdlNumber)
+            wTemp.append(wdlNumber)
         # db(str("Syzygy lookup for board " + str(state) + " " + board.board_fen() + ' WDL: ' + str(wdl[j])), '')
         # db(board, '')
         tt2 = time.time()
@@ -235,7 +264,7 @@ def run_program():
         # dt = ttT - tt0
         tTotal += ttT - tt0
         # Db("========Total time: ", dt)
-        if j > counts:
+        if j >= l-1:
             print("Flush: ", tFlush)
             print("StateLoad: ", tStateLoad)
             print("BoardNone: ", tBoardNone)
@@ -260,7 +289,7 @@ def run_program():
             print("BoardTotal: ", tBoardTotal/counts)
             print("WDL: ", tWdl/counts)
             print("Total: ", tTotal/counts)
-            break
+            # break
     # ttT = time.time()
     # dt = ttT - tt0
     # Db("========Total time: ", dt)
@@ -272,12 +301,11 @@ def run_program():
     tWdl = 0.
     tTotal = 0.
     counts = 1000
-    sys.exit()
 
     # ------------------------------ FLUSH TO DISK ------------------------------
     if saveToDisk:
         printProgress(j, l, True)
-        wdl[wdlLocation:wdlLocation + len(Wtemp)] = np.array(Wtemp).reshape((len(Wtemp),1))
+        wdl[wdlLocation:wdlLocation + len(wTemp)] = np.array(wTemp).reshape((len(wTemp),1))
         wdl.flush()
     Db('\nDone','')
 
@@ -304,20 +332,22 @@ if __name__ == '__main__':
     #######################
 
     fileName = 'AllStates_7-int-Vec.hdf5'
-    dataSetName = '5PPpKk'
-    dataSetWdlName = '5PPpKk-Wdl'
-    nPi = 5
-    nPa = 3
-    nWPa = 2
-    confirmQuit = True
+    dataSetName = '3PKk'
+    dataSetWdlName = '3PKk-Wdl-Buffered'
+    nPi = int(dataSetName[0])
+    nPa = nPi - 2
+    # nPi = 3
+    # nPa = 1
+    nWPa = 1
+    confirmQuit = False
     confirmDSOverwrite = False
-    overwriteDS = True # if False, then append to dataset
+    overwriteDS = False # if False, then append to dataset
     saveToDisk = True
-    progressDivisions = 10000
-    debug = True
+    progressDivisions = 1000
+    debug = False
     Debug = True
-    memSizeWdl = 1000
-    memeSizeStates = 1000
+    memSizeWdl = 10000
+    memSizeStates = 10000
     startLocation = 0
 
 
@@ -328,7 +358,7 @@ if __name__ == '__main__':
 
     t0 = time.time()
     t1 = time.time()
-    run_program()
+    run_program(memSizeStates)
 
 
 
