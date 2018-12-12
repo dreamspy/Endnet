@@ -8,6 +8,19 @@ import numpy as np
 import chess.syzygy
 import sys
 
+
+#######################
+#
+#       Description
+#
+#######################
+
+# Wdl values:
+#   Syzygy values: -2..2
+#   Initial value: 10
+#   Invalid boardstate value: 11
+
+
 def db(t,v):
     if debug == True:
         print(t,v)
@@ -162,7 +175,6 @@ def run_program(memSizeStates):
     tBoardTotal = 0.
     tWdl = 0.
     tTotal = 0.
-    counts = 500000
 
     t1 = time.time()
     for j in range(startLocation, len(states)):
@@ -170,20 +182,12 @@ def run_program(memSizeStates):
 
         # ------------------------------ READ NEXT STATES ------------------------------
         if j%memSizeStates == 0:
-            # statesLeft = l - stateLocation
-            # if statesLeft < memSizeStates:
-            #     memSizeStates = statesLeft
             sTemp = states[stateLocation : stateLocation + memSizeStates]
             stateLocation += memSizeStates
             sTempCounter = 0
-            # print("\n\n\n Next states")
-            # print(sTemp)
 
         # ------------------------------ FLUSH TO DISK ------------------------------
         if len(wTemp) >= memSizeWdl:
-            # print("\n\n\n flushing wTemp")
-            # print(wTemp)
-
             tt1 = time.time()
             if saveToDisk:
                 printProgress(j, l, True)
@@ -192,9 +196,7 @@ def run_program(memSizeStates):
                 wdlLocation += len(wTemp)
                 wTemp = []
             tt2 = time.time()
-            # dt = tt2-tt1
             tFlush += tt2-tt1
-            # db("Flushing: ", dt)
 
         # ------------------------------ PRINT PROCESS ------------------------------
         if j%int(percentageUpdateInterval) == 0:
@@ -203,22 +205,14 @@ def run_program(memSizeStates):
 
         # ------------------------------ CREATE BOARD FROM STATE ------------------------------
         tt1 = time.time()
-        if j > 238000:
-            print(j, sTempCounter, len(sTemp))
         state = sTemp[sTempCounter]
         sTempCounter += 1
-        # stateSeq= states[j]
-        # print("BuffState", state)
-        # print("SeqState", stateSeq)
         tt2 = time.time()
-        # dt = tt2-tt1
         tStateLoad += tt2-tt1
-        # db("Loading state from disk: ", dt)
         tt2 = time.time()
         board = chess.Board(None)
         tt3 = time.time()
         tBoardNone += tt3-tt2
-        # db("Create empty board: ", dt)
         tt3 = time.time()
 
         for i in range(len(state)-2):
@@ -229,15 +223,8 @@ def run_program(memSizeStates):
         board.set_piece_at(state[nPi-2], chess.Piece(6, True))
         board.set_piece_at(state[nPi-1], chess.Piece(6, False))
         tt4 = time.time()
-        # dt = tt4-tt3
-        # print(dt)
         tBoardPieces += tt4-tt3
-        # print(tBoardPieces)
-        # db("Fill in pieces: ", dt)
-        # dt = tt4 - tt1
         tBoardTotal = tt4 - tt1
-        # db("Total board creating phase: ", dt)
-
 
         # ------------------------------ EXTRACT WDL VALUE ------------------------------
         tt1= time.time()
@@ -253,54 +240,27 @@ def run_program(memSizeStates):
             wTemp.append(11)
         else:
             wTemp.append(wdlNumber)
-        # db(str("Syzygy lookup for board " + str(state) + " " + board.board_fen() + ' WDL: ' + str(wdl[j])), '')
-        # db(board, '')
         tt2 = time.time()
-        # dt = tt2 - tt1
         tWdl += tt2 - tt1
-        # db("WDL extracting: ", dt)
-        # if j > 22000: break
         ttT = time.time()
-        # dt = ttT - tt0
         tTotal += ttT - tt0
-        # Db("========Total time: ", dt)
         if j >= l-1:
-            print("Flush: ", tFlush)
-            print("StateLoad: ", tStateLoad)
-            print("BoardNone: ", tBoardNone)
-            print("BoardPieces: ", tBoardPieces)
-            print("BoardTotal: ", tBoardTotal)
-            print("WDL: ", tWdl)
-            print("Total: ", tTotal)
+            print("Time division in seconds:")
+            print("  Flush: ", tFlush)
+            print("  StateLoad: ", tStateLoad)
+            print("  BoardNone: ", tBoardNone)
+            print("  BoardPieces: ", tBoardPieces)
+            print("  BoardTotal: ", tBoardTotal)
+            print("  WDL: ", tWdl)
+            print("  Total: ", tTotal)
             print()
-            print("Flush: ", tFlush/counts)
-            print("StateLoad: ", tStateLoad/counts)
-            print("BoardNone: ", tBoardNone/counts)
-            print("BoardPieces: ", tBoardPieces/counts)
-            print("BoardTotal: ", tBoardTotal/counts)
-            print("WDL: ", tWdl/counts)
-            print("Total: ", tTotal/counts)
-            print()
-            counts = tTotal
-            print("Flush: ", tFlush/counts)
-            print("StateLoad: ", tStateLoad/counts)
-            print("BoardNone: ", tBoardNone/counts)
-            print("BoardPieces: ", tBoardPieces/counts)
-            print("BoardTotal: ", tBoardTotal/counts)
-            print("WDL: ", tWdl/counts)
-            print("Total: ", tTotal/counts)
-            # break
-    # ttT = time.time()
-    # dt = ttT - tt0
-    # Db("========Total time: ", dt)
-    # Db("========Total time: ", (ttT - tt0)/22000)
-    tFlush = 0.
-    tBoard = 0.
-    tBoardPieces = 0.
-    tBoardTotal = 0.
-    tWdl = 0.
-    tTotal = 0.
-    counts = 1000
+            print("Time division in percentage:")
+            print("  Flush: ", tFlush/tTotal)
+            print("  StateLoad: ", tStateLoad/tTotal)
+            print("  BoardNone: ", tBoardNone/tTotal)
+            print("  BoardPieces: ", tBoardPieces/tTotal)
+            print("  BoardTotal: ", tBoardTotal/tTotal)
+            print("  WDL: ", tWdl/tTotal)
 
     # ------------------------------ FLUSH TO DISK ------------------------------
     if saveToDisk:
@@ -311,19 +271,6 @@ def run_program(memSizeStates):
 
 
 if __name__ == '__main__':
-
-    #######################
-    #
-    #       Description
-    #
-    #######################
-
-    # Wdl values:
-    #   Syzygy values: -2..2
-    #   Initial value: 10
-    #   Invalid boardstate value: 11
-
-    # lacking all from 15247499
 
     #######################
     #
@@ -341,7 +288,7 @@ if __name__ == '__main__':
     nWPa = 1
     confirmQuit = False
     confirmDSOverwrite = False
-    overwriteDS = False # if False, then append to dataset
+    overwriteDS = True # if False, then append to dataset
     saveToDisk = True
     progressDivisions = 1000
     debug = False
