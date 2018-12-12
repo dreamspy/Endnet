@@ -14,8 +14,11 @@ import sys
 #       Description
 #
 #######################
-
-# Wdl values:
+#
+# Purpose of this program is to extract WDL information (who has a guaranteed win)
+# from the Syzygy tablebase for generated states in <dataSetName>.
+#
+# WDL values:
 #   Syzygy values: -2..2
 #   Initial value: 10
 #   Invalid boardstate value: 11
@@ -29,11 +32,16 @@ def Db(t,v):
     if Debug == True:
         print(t,v)
 
+# Move carrier to beginning of line for overwriting last stdout
 def restart_line():
     sys.stdout.write('\r')
     sys.stdout.flush()
 
 def printProgress(j, l, saving):
+    # Print process of current dataset
+    # j: current position
+    # l: lengt of dataset
+    # saving: prints "saving data" if currently saving
     prog = round(100 * j / l, 7)
     t2 = time.time()
     timeElapsed = t2 - t1
@@ -69,6 +77,10 @@ def printProgress(j, l, saving):
     sys.stdout.flush()
 
 def run_program(memSizeStates):
+    #
+    # Extract WDLs from states
+    #
+
     ####################
     #
     #   Signal Handler
@@ -110,8 +122,7 @@ def run_program(memSizeStates):
     ##############################
 
     f = h5py.File(fileName, 'a')
-    states = f[dataSetName]
-    # [P,p,K,k]
+    states = f[dataSetName] # chess states to evaluate
 
     ##############################
     #
@@ -120,6 +131,7 @@ def run_program(memSizeStates):
     ##############################
 
     def createWdlDataset():
+        # create (and overwrite) dataset to store WDL information
         def wdlCreator(dataSetWdlName, states):
             return f.create_dataset(dataSetWdlName, (len(states),1), dtype='b', chunks=True, maxshape=(None), data = np.full((len(states),1), 10, dtype = int))#, compression="gzip", compression_opts=9)
         if dataSetWdlName in f:
@@ -142,6 +154,7 @@ def run_program(memSizeStates):
             Db("...done",'')
         return wdl
     def openWdlDataset():
+        # append to existing dataset
         if dataSetWdlName in f:
             return f[dataSetWdlName]
         else:
@@ -160,17 +173,16 @@ def run_program(memSizeStates):
     #
     ##############################
     tablebase = chess.syzygy.open_tablebase("syzygy")
-    n = m = 0
+    # n = m = 0
     l = len(states)
     percentageUpdateInterval = l / progressDivisions
-    wTemp = []
-    sTemp = []
-    wdlLocation = startLocation
-    stateLocation = startLocation
-    # tt0 = time.time()
-
+    wTemp = [] # buffer for WDLs
+    sTemp = [] # buffer for states
+    wdlLocation = startLocation # current location in the WDL buffer
+    stateLocation = startLocation # current location in the states buffer
 
     # ------------------------------ Time Machines ------------------------------
+    # Measure total time spent in each phase
     tFlush = 0.
     tBoardNone = 0.
     tStateLoad = 0.
@@ -181,6 +193,7 @@ def run_program(memSizeStates):
 
     t1 = time.time()
     for j in range(startLocation, len(states)):
+        # iterate through all states
         tt0 = time.time()
 
         # ------------------------------ READ NEXT STATES ------------------------------
@@ -190,6 +203,7 @@ def run_program(memSizeStates):
             sTempCounter = 0
 
         # ------------------------------ FLUSH TO DISK ------------------------------
+        # Write all buffered WDLs to disk
         if len(wTemp) >= memSizeWdl:
             tt1 = time.time()
             if saveToDisk:
@@ -220,19 +234,19 @@ def run_program(memSizeStates):
 
         for i in range(len(state)-2):
             if i < nWPa:
-                board.set_piece_at(state[i], chess.Piece(1, True))
+                board.set_piece_at(state[i], chess.Piece(1, True)) # white pawns
             else:
-                board.set_piece_at(state[i], chess.Piece(1, False))
-        board.set_piece_at(state[nPi-2], chess.Piece(6, True))
-        board.set_piece_at(state[nPi-1], chess.Piece(6, False))
+                board.set_piece_at(state[i], chess.Piece(1, False)) # black pawns
+        board.set_piece_at(state[nPi-2], chess.Piece(6, True)) # white king
+        board.set_piece_at(state[nPi-1], chess.Piece(6, False)) # black king
         tt4 = time.time()
         tBoardPieces += tt4-tt3
         tBoardTotal = tt4 - tt1
 
         # ------------------------------ EXTRACT WDL VALUE ------------------------------
         tt1= time.time()
-        wdlError = False
-        wdlNumber = 0
+        wdlError = False # is the board valid wrt chess rules?
+        wdlNumber = 0 # extracted WDL value
         if board.is_valid():
             try:
                 wdlNumber = tablebase.probe_wdl(board)
@@ -240,15 +254,17 @@ def run_program(memSizeStates):
                 wdlError = True
                 pass
         if wdlError:
-            wTemp.append(11)
+            wTemp.append(11) # WDL = 11 if invalid board state
         else:
-            wTemp.append(wdlNumber)
+            wTemp.append(wdlNumber) # add to WDL buffer
         tt2 = time.time()
         tWdl += tt2 - tt1
         ttT = time.time()
         tTotal += ttT - tt0
         if j >= l-1:
-            print("Time division in seconds:")
+            # If we've reached the end, print out statistics
+            print()
+            print("Total time spent in each phase, in seconds:")
             print("  Flush: ", tFlush)
             print("  StateLoad: ", tStateLoad)
             print("  BoardNone: ", tBoardNone)
@@ -257,7 +273,7 @@ def run_program(memSizeStates):
             print("  WDL: ", tWdl)
             print("  Total: ", tTotal)
             print()
-            print("Time division in percentage:")
+            print("Total time spent in each phase, in percentage:")
             print("  Flush: ", tFlush/tTotal)
             print("  StateLoad: ", tStateLoad/tTotal)
             print("  BoardNone: ", tBoardNone/tTotal)
@@ -266,6 +282,7 @@ def run_program(memSizeStates):
             print("  WDL: ", tWdl/tTotal)
 
     # ------------------------------ FLUSH TO DISK ------------------------------
+    # empty final buffer to disk
     if saveToDisk:
         printProgress(j, l, True)
         wdl[wdlLocation:wdlLocation + len(wTemp)] = np.array(wTemp).reshape((len(wTemp),1))
@@ -282,23 +299,23 @@ if __name__ == '__main__':
     #######################
 
     fileName = 'AllStates_7-int-Vec.hdf5'
-    dataSetName = '4PpKk'
-    dataSetWdlName = '4PpKk-Wdl-Buffered'
-    nPi = int(dataSetName[0])
-    nPa = nPi - 2
+    dataSetName = '5PPpKk'
+    dataSetWdlName = '5PPpKk-Wdl-Buffered' #write WDL from syzygy
+    nPi = int(dataSetName[0]) #number of pieces
+    nPa = nPi - 2 # number of pawns
     # nPi = 3
     # nPa = 1
-    nWPa = 1
-    confirmQuit = False
+    nWPa = 2 # nubmer of white pawns
+    confirmQuit = False # confirm if user wants to quit at ctrl-c
     confirmDSOverwrite = False
     overwriteDS = True # if False, then append to dataset
-    saveToDisk = True
-    progressDivisions = 1000
+    saveToDisk = True # save data or do dry run
+    progressDivisions = 10000 # display progess at dataset intervals
     debug = False
     Debug = True
-    memSizeWdl = 10000
-    memSizeStates = 10000
-    startLocation = 0
+    memSizeWdl = 10000 # buffer for storing WDLs
+    memSizeStates = 10000 # buffer for loaded states
+    startLocation = 0 # start WDL extraction at this state number
 
     #######################
     #
