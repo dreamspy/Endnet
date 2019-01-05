@@ -225,11 +225,11 @@ if __name__ == '__main__':
     #######################
 
     # Writes out all possible combinations of states for Pawn chess (two kings plus some pawns)
-    # The board is nSq squares. Cominations are made using nPi pieces, where nPa is the number of pawns,
-    # nWPa is the number of white pawns.
+    # The board is nSq squares. Combinations are made using nPi pieces, where nPa is the number of pawns
+    # and nWPa is the number of white pawns.
     #
-    # A state s is represented as a nPi dimensional integer vector, where s[i] is the location
-    # of piece number i, from 0 to 63 (0 = A1, 64 = G8)
+    # A state s is represented as an nPi dimensional integer vector, where s[i] is the location
+    # of piece number i, from 0 to 63 (0 = A1, 63 = G8)
     #
     # State format is as follows:
     #   s[0:nWPa] = location of white pawns
