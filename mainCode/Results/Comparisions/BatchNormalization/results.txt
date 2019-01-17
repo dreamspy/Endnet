@@ -1,0 +1,4 @@
+005 no batch
+011 with batch n. 
+
+no batch norm better after 40 epochs

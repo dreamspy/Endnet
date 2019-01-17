@@ -1,3 +1,4 @@
+import math
 import time
 from decimal import Decimal
 import random
@@ -7,6 +8,7 @@ import h5py
 import numpy as np
 import chess.syzygy
 import sys
+import traceback
 
 def db(t,v):
     if debug == True:
@@ -46,164 +48,162 @@ def printProgress(j, l, saving):
     sys.stdout.flush()
 
 def run_program():
-    ####################
-    #
-    #   Signal Handler
-    #
-    ####################
-    def exit_gracefully(signum, frame):
-        # restore the original signal handler as otherwise evil things will happen
-        # in raw_input when CTRL+C is pressed, and our signal handler is not re-entrant
-        signal.signal(signal.SIGINT, original_sigint)
+    try:
+        ####################
+        #
+        #   Signal Handler
+        #
+        ####################
+        def exit_gracefully(signum, frame):
+            # restore the original signal handler as otherwise evil things will happen
+            # in raw_input when CTRL+C is pressed, and our signal handler is not re-entrant
+            signal.signal(signal.SIGINT, original_sigint)
 
-        try:
-            if confirmQuit:
-                if input("\nReally quit? (y/n)> ").lower().startswith('y'):
+            try:
+                if confirmQuit:
+                    if input("\nReally quit? (y/n)> ").lower().startswith('y'):
+                        print("Flushing data to disk")
+                        f.close()
+                        sys.exit(1)
+                else:
                     print("Flushing data to disk")
                     f.close()
                     sys.exit(1)
-            else:
+
+            except KeyboardInterrupt:
+                print("\nOk ok, quitting")
                 print("Flushing data to disk")
                 f.close()
                 sys.exit(1)
 
-        except KeyboardInterrupt:
-            print("\nOk ok, quitting")
-            print("Flushing data to disk")
-            f.close()
-            sys.exit(1)
+            # restore the exit gracefully handler here
+            signal.signal(signal.SIGINT, exit_gracefully)
 
-        # restore the exit gracefully handler here
+        # store the original SIGINT handler
+        original_sigint = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT, exit_gracefully)
 
-    # store the original SIGINT handler
-    original_sigint = signal.getsignal(signal.SIGINT)
-    signal.signal(signal.SIGINT, exit_gracefully)
+        ##############################
+        #
+        #      Load dataset
+        #
+        ##############################
 
-    ##############################
-    #
-    #      Load dataset
-    #
-    ##############################
+        f = h5py.File(fileName, 'r')
+        states = f[dataSetName]
+        wdl = f[dataSetWdlName]
+        # [P,p,K,k]
 
-    # f = h5py.File(fileName, 'a')
-    f = h5py.File(fileName, 'r')
-    states = f[dataSetName]
-    # [P,p,K,k]
 
-    ##############################
-    #
-    #   Create WDL dataset
-    #
-    ##############################
+        ##############################
+        #
+        #   Fill in WDL dataset
+        #
+        ##############################
+        tablebase = chess.syzygy.open_tablebase("syzygy")
+        n = m = 0
+        l = len(states)
+        t1 = time.time()
+        percentageUpdateInterval = l / progressDivisions
+        Wtemp = []
+        wdlLocation = 0
+        perc = c = r = w = e = 0
+        for j in range(len(states)//10):
+            if randomCheck:
+                j = random.randint(0,l-1)
 
-    def createWdlDataset():
-        def wdlCreator(dataSetWdlName, states):
-            return f.create_dataset(dataSetWdlName, (len(states),1), dtype='b', chunks=True, maxshape=(None), data = np.full((len(states),1), 10, dtype = int))#, compression="gzip", compression_opts=9)
-        if dataSetWdlName in f:
-            if confirmDSOverwrite:
-                action = input("Dataset " + str(dataSetWdlName) + " already exists. Overwrite? [y/n]")
-                if action == 'y' or action == 'Y':
-                    del f[dataSetWdlName]
-                    Db("Overwriting dataset: ", dataSetWdlName)
-                    wdl = wdlCreator(dataSetWdlName, states)
-                else:
-                    Db("Aborting.",'')
-                    sys.exit()
+            # ------------------------------ FLUSH TO DISK ------------------------------
+            # if len(Wtemp) >= memSize:
+            #     if saveToDisk:
+            #         printProgress(j, l, True)
+            #         wdl[wdlLocation:wdlLocation + len(Wtemp)] = np.array(Wtemp).reshape((len(Wtemp),1))
+            #         wdl.flush()
+            #         wdlLocation += len(Wtemp)
+            #         Wtemp = []
+
+            # ------------------------------ PRINT PROCESS ------------------------------
+            # if j%int(percentageUpdateInterval) == 0:
+            #     printProgress(j, l, False)
+
+            # ------------------------------ CREATE BOARD FROM STATE ------------------------------
+            def state2Board(state):
+
+                nPi = len(state)
+                nPa = nPi - 2
+                nWPa = math.ceil(nPa / 2)
+                board = chess.Board(None)
+
+                # state = state.astype(dtype='int32')
+
+                for i in range(len(state) - 2):
+                    if i < nWPa:
+                        board.set_piece_at(state[i], chess.Piece(1, True))
+                    else:
+                        board.set_piece_at(state[i], chess.Piece(1, False))
+                board.set_piece_at(state[nPi - 2], chess.Piece(6, True))
+                board.set_piece_at(state[nPi - 1], chess.Piece(6, False))
+                return board
+
+            state = states[j]
+            state = state.astype(dtype='int32')
+            # print(state)
+            board = state2Board(state)
+
+            # ------------------------------ EXTRACT WDL VALUE ------------------------------
+            wdlError = False
+            wdlNumber = 0
+            if board.is_valid():
+                try:
+                    wdlNumber = tablebase.probe_wdl(board)
+                    wdlFromDisk = wdl[j]
+                    if wdlNumber == wdlFromDisk:
+                        r += 1
+                    else:
+                        w += 1
+                        print("===============ERROR, WRONG WDL VALUE===============")
+                        print(state)
+                        print(board)
+                        print("wdlNumberFromSyzygy: ", wdlNumber)
+                        print("wdlNumberFromDB: ", wdlFromDisk)
+                except Exception as e:
+                    # f.close()
+                    print("Exception!!!!!!!!!!!!!!!")
+                    print(e)
+                    print(traceback.format_exc())
             else:
-                del f[dataSetWdlName]
-                Db("Overwriting dataset: ", dataSetWdlName)
-                wdl = wdlCreator(dataSetWdlName, states)
-        else:
-            Db("Creating dataset: " + dataSetWdlName, '')
-            wdl = wdlCreator(dataSetWdlName, states)
-            Db("...done",'')
-        return wdl
-    x = 1
-    # wdl = createWdlDataset()
-    wdl = f['4PpKk-Wdl']
-
-    ##############################
-    #
-    #   Fill in WDL dataset
-    #
-    ##############################
-    tablebase = chess.syzygy.open_tablebase("syzygy")
-    n = m = 0
-    l = len(states)
-    t1 = time.time()
-    percentageUpdateInterval = l / progressDivisions
-    Wtemp = []
-    wdlLocation = 0
-    perc = c = r = w = 0
-    for j in range(len(states)):
-        j = random.randint(0,l-1)
-
-        # ------------------------------ FLUSH TO DISK ------------------------------
-        # if len(Wtemp) >= memSize:
-        #     if saveToDisk:
-        #         printProgress(j, l, True)
-        #         wdl[wdlLocation:wdlLocation + len(Wtemp)] = np.array(Wtemp).reshape((len(Wtemp),1))
-        #         wdl.flush()
-        #         wdlLocation += len(Wtemp)
-        #         Wtemp = []
-
-        # ------------------------------ PRINT PROCESS ------------------------------
-        # if j%int(percentageUpdateInterval) == 0:
-        #     printProgress(j, l, False)
-
-        # ------------------------------ CREATE BOARD FROM STATE ------------------------------
-        state = states[j]
-        board = chess.Board(None)
-
-        for i in range(len(state)-2):
-            # print(i)
-            if i < nWPa:
-                # db('1: ', state[i])
-                board.set_piece_at(state[i], chess.Piece(1, True))
-            else:
-                # db('2: ', state[i])
-                board.set_piece_at(state[i], chess.Piece(1, False))
-        board.set_piece_at(state[nPi-2], chess.Piece(6, True))
-        board.set_piece_at(state[nPi-1], chess.Piece(6, False))
+                e += 1
+                # print("===============ERROR, ILLEGAL BOARD STATE===============")
+                # print(state)
+                # print(board)
+                # # print("wdlNumberFromSyzygy: ", wdlNumber)
+                # print("wdlNumberFromDB: ", wdlFromDisk)
+                # wdl[j] = 11
+                # Wtemp.append(11)
 
 
-        # ------------------------------ EXTRACT WDL VALUE ------------------------------
-        wdlError = False
-        wdlNumber = 0
-        if board.is_valid():
-            try:
-                wdlNumber = tablebase.probe_wdl(board)
-                wdlFromDisk = wdl[j]
-                if wdlNumber == wdlFromDisk:
-                    r += 1
-                else:
-                    w += 1
-                    print("ERROR ON BOARD")
-                    print(state)
-                    print(board)
-                    print("wdlNumberFromSyzygy: ", wdlNumber)
-                    print("wdlNumberFromDB: ", wdlFromDisk)
-            except:
-                wdlError = True
-                pass
-        # if wdlError:
-        #     # wdl[j] = 11
-        #     Wtemp.append(11)
-        # else:
-        #     # wdl[j] = wdlNumber
-        #     Wtemp.append(wdlNumber)
-        # db(str("Syzygy lookup for board " + str(state) + " " + board.board_fen() + ' WDL: ' + str(wdl[j])), '')
-        # db(board, '')
-        c += 1
-        if c%int(l/1000) == 0:
-            perc += 1
-            print("percentage", perc/1000)
-            print("tested", c)
-            print("right ", r)
-            print("wrong ", w)
+            # if wdlError:
+                # wdl[j] = 11
+                # Wtemp.append(11)
+            # else:
+            #     # wdl[j] = wdlNumber
+            #     Wtemp.append(wdlNumber)
+            # db(str("Syzygy lookup for board " + str(state) + " " + board.board_fen() + ' WDL: ' + str(wdl[j])), '')
+            # db(board, '')
+            c += 1
+            if c%int(l//printInterval) == 0:
+                print("==Random Check results==")
+                print("Percentage of dataset size", (100*c)//l)
+                print("Tested states", c)
+                print("Right WDL values", r)
+                print("Wrong WDL values", w)
+                print("invalid boardstates", e)
+                print()
 
-    db('Done','')
+        db('Done','')
+
+    except Exception as e:
+        print(e)
+        print(traceback.format_exc())
 
 
 if __name__ == '__main__':
@@ -225,16 +225,27 @@ if __name__ == '__main__':
     #
     #######################
 
-    fileName = 'AllStates_7-int-Vec.hdf5'
-    dataSetName = '4PpKk'
-    dataSetWdlName = '4PpKk-Wdl'
-    nPi = 4
-    nPa = 2
-    nWPa = 1
-    confirmQuit = True
+    tableBase = '5PPpKk'
+    fileName = tableBase + '.hdf5'
+    # dataSetName = tableBase
+    # dataSetWdlName = tableBase + '_Wdl'
+    dataSetName = tableBase + '_onlyLegal'
+    dataSetWdlName = tableBase + '_Wdl_onlyLegal'
+    # dataSetName = '3PKk'
+    # dataSetWdlName = '3PKk_Wdl'
+    nPi =  int(dataSetName[0])
+    nPa = nPi - 2
+    nWPa = math.ceil(nPa/2)
+    # print(nPi)
+    # print(nPa)
+    # print(nWPa)
+    # sys.exit()
+    confirmQuit = False
     confirmDSOverwrite = True
-    saveToDisk = True
+    saveToDisk = False
+    randomCheck = True
     progressDivisions = 10000
+    printInterval = 10000
     debug = False
     Debug = True
     memSize = 10000

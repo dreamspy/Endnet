@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 import chess.syzygy
 import sys
+import math
 
 
 #######################
@@ -14,14 +15,12 @@ import sys
 #       Description
 #
 #######################
-#
-# Purpose of this program is to extract WDL information (who has a guaranteed win)
-# from the Syzygy tablebase for generated states in <dataSetName>.
-#
-# WDL values:
+
+# Wdl values:
 #   Syzygy values: -2..2
 #   Initial value: 10
-#   Invalid boardstate value: 11
+#   WDL probe error: 11
+#   Board state invalid: 12
 
 
 def db(t,v):
@@ -32,16 +31,11 @@ def Db(t,v):
     if Debug == True:
         print(t,v)
 
-# Move carrier to beginning of line for overwriting last stdout
 def restart_line():
     sys.stdout.write('\r')
     sys.stdout.flush()
 
 def printProgress(j, l, saving):
-    # Print process of current dataset
-    # j: current position
-    # l: lengt of dataset
-    # saving: prints "saving data" if currently saving
     prog = round(100 * j / l, 7)
     t2 = time.time()
     timeElapsed = t2 - t1
@@ -77,217 +71,223 @@ def printProgress(j, l, saving):
     sys.stdout.flush()
 
 def run_program(memSizeStates):
-    #
-    # Extract WDLs from states
-    #
+    try:
+        ####################
+        #
+        #   Signal Handler
+        #
+        ####################
+        def exit_gracefully(signum, frame):
+            # restore the original signal handler as otherwise evil things will happen
+            # in raw_input when CTRL+C is pressed, and our signal handler is not re-entrant
+            signal.signal(signal.SIGINT, original_sigint)
 
-    ####################
-    #
-    #   Signal Handler
-    #
-    ####################
-    def exit_gracefully(signum, frame):
-        # restore the original signal handler as otherwise evil things will happen
-        # in raw_input when CTRL+C is pressed, and our signal handler is not re-entrant
-        signal.signal(signal.SIGINT, original_sigint)
-
-        try:
-            if confirmQuit:
-                if input("\nReally quit? (y/n)> ").lower().startswith('y'):
+            try:
+                if confirmQuit:
+                    if input("\nReally quit? (y/n)> ").lower().startswith('y'):
+                        print("Flushing data to disk")
+                        f.close()
+                        sys.exit(1)
+                else:
                     print("Flushing data to disk")
                     f.close()
                     sys.exit(1)
-            else:
+
+            except KeyboardInterrupt:
+                print("\nOk ok, quitting")
                 print("Flushing data to disk")
                 f.close()
                 sys.exit(1)
 
-        except KeyboardInterrupt:
-            print("\nOk ok, quitting")
-            print("Flushing data to disk")
-            f.close()
-            sys.exit(1)
+            # restore the exit gracefully handler here
+            signal.signal(signal.SIGINT, exit_gracefully)
 
-        # restore the exit gracefully handler here
+        # store the original SIGINT handler
+        original_sigint = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT, exit_gracefully)
 
-    # store the original SIGINT handler
-    original_sigint = signal.getsignal(signal.SIGINT)
-    signal.signal(signal.SIGINT, exit_gracefully)
+        ##############################
+        #
+        #      Load dataset
+        #
+        ##############################
 
-    ##############################
-    #
-    #      Load dataset
-    #
-    ##############################
+        f = h5py.File(fileName, 'a')
+        states = f[dataSetName]
+        # [P,p,K,k]
 
-    f = h5py.File(fileName, 'a')
-    states = f[dataSetName] # chess states to evaluate
+        ##############################
+        #
+        #   Create WDL dataset
+        #
+        ##############################
 
-    ##############################
-    #
-    #   Create WDL dataset
-    #
-    ##############################
-
-    def createWdlDataset():
-        # create (and overwrite) dataset to store WDL information
-        def wdlCreator(dataSetWdlName, states):
-            return f.create_dataset(dataSetWdlName, (len(states),1), dtype='b', chunks=True, maxshape=(None), data = np.full((len(states),1), 10, dtype = int))#, compression="gzip", compression_opts=9)
-        if dataSetWdlName in f:
-            if confirmDSOverwrite:
-                action = input("Dataset " + str(dataSetWdlName) + " already exists. Overwrite? [y/n]")
-                if action == 'y' or action == 'Y':
+        def createWdlDataset():
+            def wdlCreator(dataSetWdlName, states):
+                return f.create_dataset(dataSetWdlName, (len(states),1), dtype='b', chunks=True, maxshape=(None), data = np.full((len(states),1), 10, dtype = int))#, compression="gzip", compression_opts=9)
+            if dataSetWdlName in f:
+                if confirmDSOverwrite:
+                    action = input("Dataset " + str(dataSetWdlName) + " already exists. Overwrite? [y/n]")
+                    if action == 'y' or action == 'Y':
+                        del f[dataSetWdlName]
+                        Db("Overwriting dataset: ", dataSetWdlName)
+                        wdl = wdlCreator(dataSetWdlName, states)
+                    else:
+                        Db("Aborting.",'')
+                        sys.exit()
+                else:
                     del f[dataSetWdlName]
                     Db("Overwriting dataset: ", dataSetWdlName)
                     wdl = wdlCreator(dataSetWdlName, states)
-                else:
-                    Db("Aborting.",'')
-                    sys.exit()
             else:
-                del f[dataSetWdlName]
-                Db("Overwriting dataset: ", dataSetWdlName)
+                Db("Creating dataset: " + dataSetWdlName, '')
                 wdl = wdlCreator(dataSetWdlName, states)
+                Db("...done",'')
+            return wdl
+        def openWdlDataset():
+            if dataSetWdlName in f:
+                return f[dataSetWdlName]
+            else:
+                Db("Dataset doesn't exist. Abort mission.")
+                sys.exit(1)
+        x = 1
+        if overwriteDS:
+            wdl = createWdlDataset()
         else:
-            Db("Creating dataset: " + dataSetWdlName, '')
-            wdl = wdlCreator(dataSetWdlName, states)
-            Db("...done",'')
-        return wdl
-    def openWdlDataset():
-        # append to existing dataset
-        if dataSetWdlName in f:
-            return f[dataSetWdlName]
-        else:
-            Db("Dataset doesn't exist. Abort mission.")
-            sys.exit(1)
-    x = 1
-    if overwriteDS:
-        wdl = createWdlDataset()
-    else:
-        wdl = openWdlDataset()
+            wdl = openWdlDataset()
 
 
-    ##############################
-    #
-    #   Fill in WDL dataset
-    #
-    ##############################
-    tablebase = chess.syzygy.open_tablebase("syzygy")
-    # n = m = 0
-    l = len(states)
-    percentageUpdateInterval = l / progressDivisions
-    wTemp = [] # buffer for WDLs
-    sTemp = [] # buffer for states
-    wdlLocation = startLocation # current location in the WDL buffer
-    stateLocation = startLocation # current location in the states buffer
 
-    # ------------------------------ Time Machines ------------------------------
-    # Measure total time spent in each phase
-    tFlush = 0.
-    tBoardNone = 0.
-    tStateLoad = 0.
-    tBoardPieces = 0.
-    tBoardTotal = 0.
-    tWdl = 0.
-    tTotal = 0.
+        ##############################
+        #
+        #   Fill in WDL dataset
+        #
+        ##############################
+        n = m = 0
+        l = len(states)
+        percentageUpdateInterval = l / progressDivisions
+        wTemp = []
+        sTemp = []
+        wdlLocation = startLocation
+        stateLocation = startLocation
+        # tt0 = time.time()
 
-    t1 = time.time()
-    for j in range(startLocation, len(states)):
-        # iterate through all states
-        tt0 = time.time()
 
-        # ------------------------------ READ NEXT STATES ------------------------------
-        if j%memSizeStates == 0:
-            sTemp = states[stateLocation : stateLocation + memSizeStates]
-            stateLocation += memSizeStates
-            sTempCounter = 0
+        # ------------------------------ Time Machines ------------------------------
+        tFlush = 0.
+        tBoardNone = 0.
+        tStateLoad = 0.
+        tBoardPieces = 0.
+        tBoardTotal = 0.
+        tWdl = 0.
+        tValid = 0
+        tTotal = 0.
+
+        t1 = time.time()
+        nrOfIllegalStates = 0
+        nrOfFailedWdlLookups = 0
+        for j in range(startLocation, len(states)):
+            tt0 = time.time()
+
+            # ------------------------------ READ NEXT STATES ------------------------------
+            if j%memSizeStates == 0:
+                sTemp = states[stateLocation : stateLocation + memSizeStates]
+                stateLocation += memSizeStates
+                sTempCounter = 0
+
+            # ------------------------------ FLUSH TO DISK ------------------------------
+            if len(wTemp) >= memSizeWdl:
+                tt1 = time.time()
+                if saveToDisk:
+                    printProgress(j, l, True)
+                    wdl[wdlLocation:wdlLocation + len(wTemp)] = np.array(wTemp).reshape((len(wTemp),1))
+                    wdl.flush()
+                    wdlLocation += len(wTemp)
+                    wTemp = []
+                tt2 = time.time()
+                tFlush += tt2-tt1
+
+            # ------------------------------ PRINT PROCESS ------------------------------
+            if j%int(percentageUpdateInterval) == 0:
+                printProgress(j, l, False)
+
+
+            # ------------------------------ CREATE BOARD FROM STATE ------------------------------
+            tt1 = time.time()
+            state = sTemp[sTempCounter]
+            sTempCounter += 1
+            tt2 = time.time()
+            tStateLoad += tt2-tt1
+            tt2 = time.time()
+            board = chess.Board(None)
+            tt3 = time.time()
+            tBoardNone += tt3-tt2
+            tt3 = time.time()
+
+            state = state.astype(dtype='int32')
+
+            for i in range(len(state)-2):
+                if i < nWPa:
+                    board.set_piece_at(state[i], chess.Piece(1, True))
+                else:
+                    board.set_piece_at(state[i], chess.Piece(1, False))
+            board.set_piece_at(state[nPi-2], chess.Piece(6, True))
+            board.set_piece_at(state[nPi-1], chess.Piece(6, False))
+            tt4 = time.time()
+            tBoardPieces += tt4-tt3
+            tBoardTotal = tt4 - tt1
+
+            # ------------------------------ EXTRACT WDL VALUE ------------------------------
+            tt1= time.time()
+            wdlError = False
+            wdlNumber = 0
+            if board.is_valid():
+                tt3 = time.time()
+                try:
+                    wdlNumber = tablebase.probe_wdl(board)
+                    wTemp.append(wdlNumber)
+                except:
+                    # wdlError = True
+                    # print("    " + '11')
+                    nrOfFailedWdlLookups += 1
+                    wTemp.append(11)
+            else:
+                nrOfIllegalStates +=1
+                wTemp.append(12)
+            tt2 = time.time()
+            tWdl += tt2 - tt1
+            tValid += tt3 - tt1
+            ttT = time.time()
+            tTotal += ttT - tt0
+            if j >= l-1:
+                print("Time division in seconds:")
+                print("  Flush: ", tFlush)
+                print("  StateLoad: ", tStateLoad)
+                print("  BoardNone: ", tBoardNone)
+                print("  BoardPieces: ", tBoardPieces)
+                print("  BoardTotal: ", tBoardTotal)
+                print("  extract WDL: ", tWdl)
+                print("  Total: ", tTotal)
+                print()
+                print("Time division in percentage:")
+                print("  Flush: ", tFlush/tTotal)
+                print("  StateLoad: ", tStateLoad/tTotal)
+                print("  BoardNone: ", tBoardNone/tTotal)
+                print("  BoardPieces: ", tBoardPieces/tTotal)
+                print("  BoardTotal: ", tBoardTotal/tTotal)
+                print("  extract WDL (incl valid and lookup): ", tWdl/tTotal)
+                print("  board Valid: ", tValid/tTotal)
 
         # ------------------------------ FLUSH TO DISK ------------------------------
-        # Write all buffered WDLs to disk
-        if len(wTemp) >= memSizeWdl:
-            tt1 = time.time()
-            if saveToDisk:
-                printProgress(j, l, True)
-                wdl[wdlLocation:wdlLocation + len(wTemp)] = np.array(wTemp).reshape((len(wTemp),1))
-                wdl.flush()
-                wdlLocation += len(wTemp)
-                wTemp = []
-            tt2 = time.time()
-            tFlush += tt2-tt1
-
-        # ------------------------------ PRINT PROCESS ------------------------------
-        if j%int(percentageUpdateInterval) == 0:
-            printProgress(j, l, False)
-
-
-        # ------------------------------ CREATE BOARD FROM STATE ------------------------------
-        tt1 = time.time()
-        state = sTemp[sTempCounter]
-        sTempCounter += 1
-        tt2 = time.time()
-        tStateLoad += tt2-tt1
-        tt2 = time.time()
-        board = chess.Board(None)
-        tt3 = time.time()
-        tBoardNone += tt3-tt2
-        tt3 = time.time()
-
-        for i in range(len(state)-2):
-            if i < nWPa:
-                board.set_piece_at(state[i], chess.Piece(1, True)) # white pawns
-            else:
-                board.set_piece_at(state[i], chess.Piece(1, False)) # black pawns
-        board.set_piece_at(state[nPi-2], chess.Piece(6, True)) # white king
-        board.set_piece_at(state[nPi-1], chess.Piece(6, False)) # black king
-        tt4 = time.time()
-        tBoardPieces += tt4-tt3
-        tBoardTotal = tt4 - tt1
-
-        # ------------------------------ EXTRACT WDL VALUE ------------------------------
-        tt1= time.time()
-        wdlError = False # is the board valid wrt chess rules?
-        wdlNumber = 0 # extracted WDL value
-        if board.is_valid():
-            try:
-                wdlNumber = tablebase.probe_wdl(board)
-            except:
-                wdlError = True
-                pass
-        if wdlError:
-            wTemp.append(11) # WDL = 11 if invalid board state
-        else:
-            wTemp.append(wdlNumber) # add to WDL buffer
-        tt2 = time.time()
-        tWdl += tt2 - tt1
-        ttT = time.time()
-        tTotal += ttT - tt0
-        if j >= l-1:
-            # If we've reached the end, print out statistics
-            print()
-            print("Total time spent in each phase, in seconds:")
-            print("  Flush: ", tFlush)
-            print("  StateLoad: ", tStateLoad)
-            print("  BoardNone: ", tBoardNone)
-            print("  BoardPieces: ", tBoardPieces)
-            print("  BoardTotal: ", tBoardTotal)
-            print("  WDL: ", tWdl)
-            print("  Total: ", tTotal)
-            print()
-            print("Total time spent in each phase, in percentage:")
-            print("  Flush: ", tFlush/tTotal)
-            print("  StateLoad: ", tStateLoad/tTotal)
-            print("  BoardNone: ", tBoardNone/tTotal)
-            print("  BoardPieces: ", tBoardPieces/tTotal)
-            print("  BoardTotal: ", tBoardTotal/tTotal)
-            print("  WDL: ", tWdl/tTotal)
-
-    # ------------------------------ FLUSH TO DISK ------------------------------
-    # empty final buffer to disk
-    if saveToDisk:
-        printProgress(j, l, True)
-        wdl[wdlLocation:wdlLocation + len(wTemp)] = np.array(wTemp).reshape((len(wTemp),1))
-        wdl.flush()
-    Db('\nDone','')
+        if saveToDisk:
+            printProgress(j, l, True)
+            wdl[wdlLocation:wdlLocation + len(wTemp)] = np.array(wTemp).reshape((len(wTemp),1))
+            wdl.flush()
+        Db('\nDone','')
+        Db('Nr of illegal states:',nrOfIllegalStates)
+        Db('Nr of failed WDL lookups:',nrOfFailedWdlLookups)
+    finally:
+        f.close()
 
 
 if __name__ == '__main__':
@@ -298,34 +298,43 @@ if __name__ == '__main__':
     #
     #######################
 
-    fileName = 'AllStates_7-int-Vec.hdf5'
-    dataSetName = '5PPpKk'
-    dataSetWdlName = '5PPpKk-Wdl-Buffered' #write WDL from syzygy
-    nPi = int(dataSetName[0]) #number of pieces
-    nPa = nPi - 2 # number of pawns
-    # nPi = 3
-    # nPa = 1
-    nWPa = 2 # nubmer of white pawns
-    confirmQuit = False # confirm if user wants to quit at ctrl-c
-    confirmDSOverwrite = False
+    # fileName = '/Volumes/BigBoy/DATA/AllStates_7-int-Vec.hdf5'
+    tableBase = '5PPpKk'
+    fileName = tableBase + '.hdf5'
+    dataSetName = tableBase
+    dataSetWdlName = tableBase + '_Wdl'
+    nPi =  int(dataSetName[0])
+    nPa = nPi - 2
+    nWPa = math.ceil(nPa/2)
+    # print(nPi)
+    # print(nPa)
+    # print(nWPa)
+
+    confirmQuit = False
+    confirmDSOverwrite = True
     overwriteDS = True # if False, then append to dataset
-    saveToDisk = True # save data or do dry run
-    progressDivisions = 10000 # display progess at dataset intervals
+    saveToDisk = True
+    progressDivisions = 1000
     debug = False
     Debug = True
-    memSizeWdl = 10000 # buffer for storing WDLs
-    memSizeStates = 10000 # buffer for loaded states
-    startLocation = 0 # start WDL extraction at this state number
+    memSizeWdl = 10000
+    memSizeStates = 10000
+    startLocation = 0
 
+    tablebase = chess.syzygy.open_tablebase("syzygy")
     #######################
     #
     #     Run Program
     #
     #######################
 
+
+
+
     t0 = time.time()
     t1 = time.time()
     run_program(memSizeStates)
+
 
 
 

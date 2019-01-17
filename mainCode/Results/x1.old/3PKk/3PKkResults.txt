@@ -1,0 +1,17 @@
+3 conv layers 64,96,256
+1.5MB
+0.99 after 300
+
+3 conv layers 32,48,128
+size = 300KB
+0.995 after 50
+
+3 conv layers 16,24,64
+size = 113KB
+0.991 after 50
+
+3 conv layers 8,12,32
+size = 41KB
+ after 50
+
+

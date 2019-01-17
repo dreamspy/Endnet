@@ -104,3 +104,13 @@ venv.bak/
 .mypy_cache/
 
 *.hdf5
+
+#misc
+1.old
+1.data_done
+fitTemp
+syzygy
+
+# git ignore marker
+*gitign
+
