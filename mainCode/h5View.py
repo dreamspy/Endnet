@@ -17,11 +17,11 @@ def Db(t,v):
 Debug = False
 Debug = True
 
-def loadDset(fileName, dataSetName):
+def loadDataSet(fileName, dataSetName):
     f = h5py.File(fileName, 'a')
     return f[dataSetName]
 
-def loadDataSet(f):
+def loadDataSetInteractive(f):
     ####################
     #
     #   Signal Handler
@@ -107,14 +107,13 @@ if __name__ == '__main__':
     #
     ########################
 
-    fileName = 'AllStates_7-int-Vec.hdf5'
-    dataSetName = "36KPvKPP"
+    fileName = '3PKk.hdf5'
+    dataSetName = "3PKk_Wdl_onlyLegal"
 
     help()
 
     db("\nOpening file:", fileName)
     f = h5py.File(fileName, 'a')
-    dataset = 0
-    dataset = loadDataSet(f)
+    dataset = loadDataSetInteractive(f)
 
 
