@@ -17,11 +17,14 @@ def Db(t,v):
 Debug = False
 Debug = True
 
+def loadFile(fileName, accessRights = 'r'):
+    return h5py.File(fileName, accessRights)
+
 def loadDataSet(fileName, dataSetName):
     f = h5py.File(fileName, 'a')
-    return f[dataSetName]
+    return f, f[dataSetName]
 
-def loadDataSetInteractive(f):
+def loadDataSetInteractive(fileName, accessRights = 'r'):
     ####################
     #
     #   Signal Handler
@@ -59,8 +62,8 @@ def loadDataSetInteractive(f):
     #
     ####################
 
-    # f = h5py.File(fileName, 'a')
-    # print("File loadded, f = " + fileName)
+    f = h5py.File(fileName, accessRights)
+    print("File loadded, f = " + fileName)
     print("Datasets:")
     i = 0
     datasetNames = [ds for ds in f]
@@ -74,7 +77,7 @@ def loadDataSetInteractive(f):
         if action == 'y' or action == 'Y':
             dataset = f[datasetNames[selectDS]]
             break
-    return dataset
+    return f, dataset
 
 def checkForTens(dataset):
     d = 1000
@@ -88,16 +91,19 @@ def checkForTens(dataset):
             print(round(i/l,3))
 
 def help():
-
     Db("Usage" +
        "\n    " +
-       "Open file handle:".ljust(25) + "f = h5py.File(fileName,'a')" +
+       "Open file handle:".ljust(35) + "f = h5py.File(fileName,'a')" +
        "\n    " +
-       "Close file handle:".ljust(25) + "f.close" +
+       "Close file handle:".ljust(35) + "f.close" +
        "\n    " +
-       "Load dataset:".ljust(25) + "dataset = loadDataSet(f)" +
+       "Load file:".ljust(35) + "f = loadFile(fileName, [accessRights = 'r'/'a'])"
        "\n    " +
-       "Display this help:". ljust(25) + "help()"
+       "Load dataset:".ljust(35) + "fileHandle, dataset = loadDataSet(fileName, dataSetName" +
+       "\n    " +
+       "Load dataset interactive:".ljust(35) + "fileHandle, dataset = loadDataSetInteractive(f, [accessRights = 'r'/'a'])" +
+       "\n    " +
+       "Display this help:". ljust(35) + "help()"
        ,'')
 
 if __name__ == '__main__':
@@ -107,13 +113,14 @@ if __name__ == '__main__':
     #
     ########################
 
-    fileName = '3PKk.hdf5'
+    fileName = '4PpKk.hdf5'
     dataSetName = "3PKk_Wdl_onlyLegal"
 
     help()
 
-    db("\nOpening file:", fileName)
-    f = h5py.File(fileName, 'a')
-    dataset = loadDataSetInteractive(f)
+    action = input('load dataset from ' + str(fileName) + '? [y/n] ')
+    if action[0] == 'y' or action[0] == 'Y':
+        dataset = loadDataSetInteractive(fileName)
+        print('Loaded to filehandler f and dataset ds')
 
 
