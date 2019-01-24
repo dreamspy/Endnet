@@ -12,3 +12,9 @@ p4 = [i/total4 for i in count4]
 P = np.array([p3[i]*p4[i] for i in range(3)]).sum()
 print("When training net N on 3pc dataset, and using it to estimate a 4pc dataset.Then the estimated probability of guessing right, given that the net guesses randomly for an outcome with probabilities p3 and p4, is P = ",\
       round(P,3))
+
+p3 = [round(i,3) for i in p3]
+p4 = [round(i,3) for i in p4]
+print(p3)
+print(p4)
+
