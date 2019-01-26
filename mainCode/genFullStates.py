@@ -6,10 +6,6 @@ import os
 import numpy as np
 import signal
 from decimal import Decimal
-# debug = False
-debug = True
-# Debug = False
-Debug = True
 
 
 def db(t,v=''):
@@ -127,8 +123,10 @@ if __name__ == '__main__':
     #   Parameters
     #
     ########################
+    debug = True
+    Debug = True
 
-    fileName = '4PpKk.hdf5'
+    fileName = '5PPpKk.hdf5'
     sourceDataSetName = fileName[:-5] + "_onlyLegal"
     targetDataSetName = fileName[:-5] + "_onlyLegal_fullStates"
 
@@ -136,6 +134,7 @@ if __name__ == '__main__':
     confirmDSOverwrite = True
     tPrintInterval = 0.5
     b = 1000 #buffer length
+    dataPartitionToUse = 0.01
 
     # Number of Pieces
     nPi = int(fileName[0])
@@ -149,12 +148,15 @@ if __name__ == '__main__':
     ########################
     with h5py.File(fileName,'a') as f:
         statesSource = openDataSet(sourceDataSetName)
-        l = len(statesSource)
+        l = int(math.ceil(len(statesSource)*dataPartitionToUse))
+        print("length of datasets: ", l)
         shape = (l, 4, 8, 8)
         if overwriteDS:
             statesTarget = createDataSet(targetDataSetName, shape)
         else:
             statesTarget = openDataSet(targetDataSetName)
+
+        assert(statesTarget.shape[0] >= l)
 
         print("Loading and creating datasets finished")
 
@@ -162,7 +164,14 @@ if __name__ == '__main__':
         t1 = t0 # last print
         i1 = i2 = 0
         for i in range(0,l,b):
-            sourceBuffer = statesSource[i:i + b]
+            # Make sure we don't copy to much from the source,
+            # if not working with the whole dataset (dataPartitionTo Use < 1.0).
+            if i + b > l:
+                B = l - i
+            else:
+                B = b
+
+            sourceBuffer = statesSource[i:i + B]
             targetBuffer = []
             for vecState in sourceBuffer:
                 targetBuffer.append(vecSt2fullSt(vecState, nPi, nPa, nWPa))
@@ -177,5 +186,5 @@ if __name__ == '__main__':
 
     print("\nAll vector states converted to full states.")
 
-    runningTime = t2 - t1
+    runningTime = t2 - t0
     print("Running time: ", formatTime(runningTime), " seconds")
