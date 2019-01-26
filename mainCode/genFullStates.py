@@ -64,7 +64,10 @@ def printProgress(t0,t1,t2, i1, i2, l):
 
 def createDataSet(dataSetName, shape):
     def dsMaker():
-        return f.create_dataset(dataSetName, shape, dtype='b', chunks=True, maxshape=(None))
+        if useCompression:
+            return f.create_dataset(dataSetName, shape, dtype='b', chunks=True, maxshape=(None), compression = "gzip")
+        else:
+            return f.create_dataset(dataSetName, shape, dtype='b', chunks=True, maxshape=(None))
 
     if dataSetName in f:
         if confirmDSOverwrite:
@@ -127,19 +130,25 @@ if __name__ == '__main__':
     Debug = True
 
     fileName = '5PPpKk.hdf5'
-    sourceDataSetName = fileName[:-5] + "_onlyLegal"
-    targetDataSetName = fileName[:-5] + "_onlyLegal_fullStates"
 
     overwriteDS = True
     confirmDSOverwrite = True
     tPrintInterval = 0.5
     b = 1000 #buffer length
-    dataPartitionToUse = 0.01
+    dataPartitionToUse = 1
+    useCompression = True
 
     # Number of Pieces
     nPi = int(fileName[0])
     nPa = nPi - 2
     nWPa = math.ceil(nPa / 2)
+
+    # autoset dataset names
+    sourceDataSetName = fileName[:-5] + "_onlyLegal"
+    if useCompression:
+        targetDataSetName = fileName[:-5] + "_onlyLegal_fullStates_gzip"
+    else:
+        targetDataSetName = fileName[:-5] + "_onlyLegal_fullStates"
 
     ########################
     #
