@@ -34,11 +34,6 @@ get_ipython().run_line_magic('run', "-i 'arena.py'")
 # In[3]:
 
 
-##############################
-#
-#    PARAMETERS 
-#
-##############################
 import math
 
 # What data to use
@@ -80,7 +75,7 @@ nWPa = math.ceil(nPa/2)
 # In[4]:
 
 
-# 3n4 no freeze and average
+# 3n4 no freeze 
 get_ipython().run_line_magic('run', "-i 'arena.py'")
 
 # Parameters
@@ -137,7 +132,7 @@ print("\nStarting/restarting TL at {} transfered layers".format(startTrainingAtL
 
 # ### Train
 
-# In[6]:
+# In[ ]:
 
 
 for copyFirstNLayers in range(startTrainingAtLayer, layersCount):
@@ -154,6 +149,10 @@ for copyFirstNLayers in range(startTrainingAtLayer, layersCount):
         
     accumulatedScore = 0
     for a in range(averageOver):
+        # save current averagePosition to tmp file
+        with open(saveDir + '/' + str(resSaveFile) + '_currentPosition.txt','w') as file:
+            file.write('Layers Transfered: {}\nInner avg loop position: {}'.format(copyFirstNLayers, a)) 
+        
         model = loadNFirstLayers(model, sourceNet, copyFirstNLayers , freeze)
 
         # Prepare save dir
