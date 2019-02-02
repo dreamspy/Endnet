@@ -83,8 +83,8 @@ sourceNet = '103' # trained on 3pc from scratch
 # sourceNet = '107' # trained on 4pc from scratch
 freeze = False
 resSaveFile = '3n4nofreeze'
-epochs = 10
-averageOver = 10
+epochs = 1
+averageOver = 1
 expDescr = "Bengio 3n4 - freeze = {} - average over {} runs".format(str(freeze), averageOver)
 
 saveEveryRun = False # save stuff in results dir
@@ -92,7 +92,7 @@ saveWeightsCheckpoints = False # save chkp in results dit
 saveTensorboardLogs = False # save logs in ./logs dir
 resID = '---NORESID---' # used when not saving data, but fitModel() still needs a resID
 
-fractionOfDataToUse = 1
+fractionOfDataToUse = 0.01
 plotDuringTraining = False
 loadWeights = False 
 askForConfirmation = False
@@ -132,8 +132,10 @@ print("\nStarting/restarting TL at {} transfered layers".format(startTrainingAtL
 
 # ### Train
 
-# In[ ]:
+# In[6]:
 
+
+get_ipython().run_line_magic('run', "-i 'arena.py'")
 
 for copyFirstNLayers in range(startTrainingAtLayer, layersCount):
     print('\n\n')
@@ -151,7 +153,7 @@ for copyFirstNLayers in range(startTrainingAtLayer, layersCount):
     for a in range(averageOver):
         # save current averagePosition to tmp file
         with open(saveDir + '/' + str(resSaveFile) + '_currentPosition.txt','w') as file:
-            file.write('Layers Transfered: {}\nInner avg loop position: {}'.format(copyFirstNLayers, a)) 
+            file.write('Layers Transfered: {}\nInner avg loop position: {} out of {}'.format(copyFirstNLayers, a, averageOver)) 
         
         model = loadNFirstLayers(model, sourceNet, copyFirstNLayers , freeze)
 
@@ -173,9 +175,13 @@ for copyFirstNLayers in range(startTrainingAtLayer, layersCount):
     # append averaged results for one set of layers
     results.append(accumulatedScore/averageOver)
 
-    ############ T O D O ############## 
-    # save old results to backup dir
-    
+    # save old results to checkpoints dir
+    dateTime = time.strftime('%Y-%m-%d-%H:%M:%S', time.localtime())
+    src = saveDir + '/' + str(resSaveFile) + '.txt'
+    dest = saveDir + '/checkpoints/' + str(resSaveFile) + dateTime + '.txt'
+    if os.path.exists(src):
+        shutil.move(src, dest)
+
     # save results 
     save_obj(saveDir, resSaveFile, results)
     with open(saveDir + '/' + str(resSaveFile) + '.txt','w') as file:
