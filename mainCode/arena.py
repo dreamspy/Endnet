@@ -32,11 +32,14 @@ from keras.callbacks import ModelCheckpoint
 import shutil
 
 # debuging
-import ipdb
+#import ipdb
 # ipdb.set_trace()
 
 # Print progress
 from decimal import Decimal
+
+# copy and rename files
+import shutil
 
 ##############################
 #
@@ -129,6 +132,13 @@ class PlotLosses(keras.callbacks.Callback):
         print("Train Loss of last epoch: ", logs['loss'])
         print("Validation Loss of last epoch: ", logs['val_loss'])
 
+        # save fitTemp stuff
+        with open(self.saveDir + 'logs.txt','w') as file:
+            file.write(str(self.logs))
+
+        with open(self.saveDir + 'atEpochNr.txt','w') as file:
+            file.write(str(epoch))
+
 #         # Plot Loss
 #         plt.subplot(1,2,1)
 #         plt.figure(figsize=(8,8))
@@ -162,11 +172,6 @@ class PlotLosses(keras.callbacks.Callback):
 # #         plt.savefig('fitTemp/currentAccAndLoss')
 #         plt.show();
 
-        with open(self.saveDir + 'logs.txt','w') as file:
-            file.write(str(self.logs))
-
-        with open(self.saveDir + 'atEpochNr.txt','w') as file:
-            file.write(str(epoch))
 
 plot_losses = PlotLosses()
 
@@ -349,6 +354,8 @@ def loadData(randomState = 42, test_size = 0.33):
         if convertStates:
             X = np.array([vecSt2fullSt(vecSt,nPi, nPa, nWPa) for vecSt in d[:loadLength]])
         else:
+            print(len(d))
+            print(loadLength)
             X = d[:loadLength]
         y = dt[:loadLength]
 
@@ -462,13 +469,22 @@ def createModel():
 #
 ##############################
 def trainModel(resID, model, saveWeightsCheckpoints = True, saveTensorBoardLogs = True):
+    # Load weights
+    if loadWeights:
+        initWeightsId = weightsSource
+    else:
+        initWeightsId = 'RND'
+
     # prepp callbacks arr
     callbacksArr = []
 
     if plotDuringTraining:
         callbacksArr.append(plot_losses)
+
     if saveTensorboardLogs:
-        logDir = './logs/{}-{}pc-{}-{}KPM-{}'.format(resID,nPi, initWeightsId, kpm, expDescr, dateTime )
+        kpm = model.count_params()//1000
+        dateTime = time.strftime('%Y-%m-%d-%H:%M:%S', time.localtime())
+        logDir = './logs/{}-{}pc-{}-{}KPM-{}BS-{}'.format(resID,nPi, initWeightsId, kpm, expDescr, batch_size,dateTime )
         callbacksArr.append(keras.callbacks.TensorBoard(log_dir=logDir))
 
     # save weight checkpoint
@@ -479,15 +495,6 @@ def trainModel(resID, model, saveWeightsCheckpoints = True, saveTensorBoardLogs 
         filepath = saveWeigthsPath + "weights-checkp-{epoch:03d}-{val_acc:.3f}.hdf5"
         checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
         callbacksArr.append(checkpoint)
-
-    kpm = model.count_params()//1000
-    dateTime = time.strftime('%Y-%m-%d-%H:%M:%S', time.localtime())
-
-    # Load weights
-    if loadWeights:
-        initWeightsId = weightsSource
-    else:
-        initWeightsId = 'RND'
 
 
     fitHistory = model.fit(X_train, y_train,
@@ -549,7 +556,7 @@ def genNextResultsDir(model, resID = None):
     print("Done generating results dir {}".format(saveDir))
     return resID
 
-def saveTrainResults(resID, model, logDir, score, copyFirstNLayers = None):
+def saveTrainResults(resID, model, logDir, score, copyFirstNLayers = None, freeze = None):
     print("Saving results to dir {}".format(resID))
     saveDir = 'Results/' + str(resID) + '/'
     ep = len(model.history.history['acc'])
@@ -557,6 +564,8 @@ def saveTrainResults(resID, model, logDir, score, copyFirstNLayers = None):
     createDir(saveDir + '_' +  '_8.finalAccuracy--------' +  str(round(score[1],3)))
     if copyFirstNLayers != None:
         createDir(saveDir + '_' +  '_11.copyFirstNLayers----' +  str(copyFirstNLayers))
+    if freeze != None:
+        createDir(saveDir + '_' +  '_12.freeze--------------' +  str(freeze))
 
     #save history
     print("Saving history...")
@@ -766,25 +775,52 @@ def formatTime(t):
 
 def loadNFirstLayers(model, sourceNet, copyFirstNLayers, freeze):
     # Load weights
-    weightsPath = 'Results/' + sourceNet + '/weights.hdf5'
-    print("Loading first {} layers from results {}, ".format(copyFirstNLayers, weightsPath))
-#     model.load_weights(weightsPath)
-    model.load_weights(weightsPath)
+    #     weightsPath = 'Results/' + sourceNet + '/weights.hdf5'
+    #     print("Loading first {} layers from results {}, ".format(copyFirstNLayers, weightsPath))
+    #     model.load_weights(weightsPath)
 
     # Randomize all but first n layers
     session = K.get_session()
     layers = model.layers
-    for i in range(copyFirstNLayers, len(layers)):
+
+    for i in range(len(layers)):
         layer = layers[i]
+
         if hasattr(layer, 'kernel_initializer'):
-            print('- Resetting layer nr {}: {}'.format(i+1,layer))
-            layer.kernel.initializer.run(session=session)
-            if freeze:
-                layer.trainable=False
+
+            # freeze layer
+            if i < copyFirstNLayers:
+                if freeze:
+                    print("- {}: Freezing layer {}".format(i + 1, layer))
+                    layer.trainable = False
+
+            # randomize layer
             else:
-                layer.trainable=True
+                print('- {}: Resetting layer {}'.format(i + 1, layer))
+                layer.kernel.initializer.run(session=session)
+
         else:
-            print('- Skipping layer nr {}: {}'.format(i+1,layer))
+            print('- {}: Skipping layer {}'.format(i + 1, layer))
 
-
+    model.compile(loss=keras.losses.categorical_crossentropy,
+                  optimizer=keras.optimizers.Adadelta(),
+                  metrics=['accuracy'])
     return model
+
+##############################
+#
+#    Plot Bengio Results
+#
+##############################
+
+
+def calcStats(measurements):
+    μ = np.mean(measurements)
+    σ = np.std(measurements, ddof=1)
+    n = len(measurements)
+    ste = σ/np.sqrt(n-1)
+    error = 1.96 * ste
+    return [μ, error] 
+    
+def convertFullToMeanError(allResults):
+    return np.array([calcStats(m) for m in allResults])

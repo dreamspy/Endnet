@@ -3,7 +3,7 @@
 
 # # Which GPU to use
 
-# In[2]:
+# In[1]:
 
 
 multiGPU = False
@@ -23,7 +23,7 @@ else:
 
 # # Load all the functions
 
-# In[3]:
+# In[2]:
 
 
 get_ipython().run_line_magic('run', "-i 'arena.py'")
@@ -220,7 +220,7 @@ print(results)
 
 # # Plot bengio results
 
-# In[37]:
+# In[10]:
 
 
 # plot Bengio 
@@ -239,12 +239,13 @@ saveDir = 'bengioResults'
 acc3n4plus = load_obj(saveDir,resSaveFile)
 
 #4n4
-resSaveFile = '4n4freeze-10runAverage'
+resSaveFile = '4n4freeze-5runAverage'
 acc4n4 = load_obj(saveDir,resSaveFile)
 # acc3n4err = [0.005,0.001,0.001,0.001,0.001,0.001,0.001,0.002,0.0022]
 
 #4n4+
-resSaveFile = '4n4nofreeze-10runAverage'
+# resSaveFile = '4n4nofreeze-10runAverage'
+resSaveFile = '4n4nofreeze-5runAverage'
 saveDir = 'bengioResults'
 acc4n4plus = load_obj(saveDir,resSaveFile)
 
@@ -445,19 +446,4 @@ for copyFirstNLayers in range(layersCount + 1):
 print('\n Final Results: {}'.format(results))
 
 
-# In[42]:
-
-
-# Train, evaluate and save 
-get_ipython().run_line_magic('run', "-i 'arena.py'")
-# %reload_ext autoreload
-plotDuringTraining = True
-fractionOfDataToUse = 0.01
-model, nnStr = createModel()
-# resID = genNextResultsDir(model)
-X_train, X_test, y_train, y_test = loadData()
-fitHistory, logDir = trainModel(resID, model)
-# score = calcScoreBigData(model)
-# score = calcScore(model)
-# saveTrainResults(resID, model, logDir, score)
-
+#  
