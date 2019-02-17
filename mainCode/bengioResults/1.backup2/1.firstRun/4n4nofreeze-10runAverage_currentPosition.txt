@@ -1,0 +1,2 @@
+Layers Transfered: 8 out of 8 
+Inner avg loop position: 8 out of 10
