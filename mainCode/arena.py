@@ -196,7 +196,7 @@ def calcScoreBigData(model):
     t1 = t0 # last print
     i1 = i2 = 0
 
-    for X_train, X_test, y_train, y_test, percDone, loadLength in genData(test_size = 0, yieldSize = yieldSize):
+    for X_train, _, y_train, _, percDone, loadLength in genData(test_size = 0, yieldSize = yieldSize):
         score += np.array(model.evaluate(X_train, y_train, verbose=0))
         t2 = time.time()
         tSinceLastPrint = t2 - t1
@@ -312,6 +312,7 @@ def genData(randomState = 42, test_size = 0.33, yieldSize = 1000):
         d = f[dataSetName]
         dt = f[dataSetWdlName]
         l = len(d)
+        print('Dataset size:', l)
 
         loadLength = int(l * fractionOfDataToUse)
 
@@ -775,9 +776,10 @@ def formatTime(t):
 
 def loadNFirstLayers(model, sourceNet, copyFirstNLayers, freeze):
     # Load weights
-    #     weightsPath = 'Results/' + sourceNet + '/weights.hdf5'
-    #     print("Loading first {} layers from results {}, ".format(copyFirstNLayers, weightsPath))
-    #     model.load_weights(weightsPath)
+    weightsPath = 'Results/' + sourceNet + '/weights.hdf5'
+    print("Loading first {} layers from results {}, ".format(copyFirstNLayers, weightsPath))
+    print("Loading weights from results {}".format(sourceNet))
+    model.load_weights(weightsPath)
 
     # Randomize all but first n layers
     session = K.get_session()
@@ -805,6 +807,8 @@ def loadNFirstLayers(model, sourceNet, copyFirstNLayers, freeze):
     model.compile(loss=keras.losses.categorical_crossentropy,
                   optimizer=keras.optimizers.Adadelta(),
                   metrics=['accuracy'])
+    print("Loaded {} first layers from {} with freeze = {}, model summary:".format(copyFirstNLayers, sourceNet, freeze ))
+    print(model.summary())
     return model
 
 ##############################

@@ -114,3 +114,17 @@ syzygy
 # git ignore marker
 *gitign
 
+# results
+Results
+
+#mac
+.DS_Store
+
+#some hidden files
+._*
+
+#old files
+mainCode/1.old
+
+#log files
+**/logs*
