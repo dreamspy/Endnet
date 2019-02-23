@@ -1,3 +1,0 @@
-005 Adadelta
-007 Adam
-Adadelta slightly better

@@ -1,7 +1,0 @@
-Purpose:
-- Test if small batch is better
-    - starting from 005, bs:4096, epochs:500
-    - shrink batch size to 512 and train
-Results: 
-- after 183 epochs, the accuracy was actually lower than before training. Batch size is probably not to big at 4096.
-
