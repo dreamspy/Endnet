@@ -1,1 +1,0 @@
-Inner avg loop position: 1 out of 1

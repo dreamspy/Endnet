@@ -485,7 +485,7 @@ def trainModel(resID, model, saveWeightsCheckpoints = True, saveTensorBoardLogs 
     if saveTensorboardLogs:
         kpm = model.count_params()//1000
         dateTime = time.strftime('%Y-%m-%d-%H:%M:%S', time.localtime())
-        logDir = './logs/{}-{}pc-{}-{}KPM-{}BS-{}'.format(resID,nPi, initWeightsId, kpm, expDescr, batch_size,dateTime )
+        logDir = './logs/{}-{}____{}pc-{}-{}KPM-{}BS-{}'.format(resID, expDescr ,nPi, initWeightsId, kpm,  batch_size, dateTime)
         callbacksArr.append(keras.callbacks.TensorBoard(log_dir=logDir))
 
     # save weight checkpoint
@@ -777,8 +777,8 @@ def formatTime(t):
 def loadNFirstLayers(model, sourceNet, copyFirstNLayers, freeze):
     # Load weights
     weightsPath = 'Results/' + sourceNet + '/weights.hdf5'
-    print("Loading first {} layers from results {}, ".format(copyFirstNLayers, weightsPath))
-    print("Loading weights from results {}".format(sourceNet))
+    print("Using first {} layers from results {}, ".format(copyFirstNLayers, weightsPath))
+    print("Loading all weights from results {}".format(sourceNet))
     model.load_weights(weightsPath)
 
     # Randomize all but first n layers
