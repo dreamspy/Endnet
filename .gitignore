@@ -119,6 +119,7 @@ Results
 
 #mac
 .DS_Store
+**/.DS_Store
 
 #some hidden files
 ._*
