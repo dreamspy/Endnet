@@ -181,15 +181,58 @@ plot_losses = PlotLosses()
 #
 ##############################
 
-def calcScore(model):
+def calcScore(model, X_test, y_test, targetWDLvalue = None, returnCount = False):
+    count = 0
+    pSize = 10
+    print("@@@@@@@@@@@@@@@@@@@@@@@@@@2 orginal X_test")
+    # print(X_test[0:pSize])
+    print(X_test.shape)
+    print(type(X_test))
+    print("@@@@@@@@@@@@@@@@@@@@@@@@@@2 orginal y_test")
+    # print(y_test[0:pSize])
+    print(X_test.shape)
+    print(type(y_test))
+
     print("Calculating score")
-    score = model.evaluate(X_test, y_test, verbose=1)
-    print(X_train.shape)
+    if targetWDLvalue != None:
+        print("Only calculating accuracy for WDL = ", targetWDLvalue)
+        X_test_temp = []
+        y_test_temp = []
+        for i in range(len(X_test)):
+            if y_test[i][targetWDLvalue + 1] == 1.:
+                X_test_temp.append(X_test[i])
+                y_test_temp.append(y_test[i])
+        X_test = np.array(X_test_temp)
+        y_test = np.array(y_test_temp)
+        print("@@@@@@@@@@@@@@@@@@@@@@@@@@2  X_test")
+        # print(X_test[0:pSize])
+        print(X_test.shape)
+        print(type(X_test[0:pSize]))
+        print("@@@@@@@@@@@@@@@@@@@@@@@@@@2 modified y_test")
+        print(y_test[0:pSize])
+        print(y_test.shape)
+        print(type(y_test))
+        count = X_test.shape[0]
+        if count != 0:
+            score = model.evaluate(X_test, y_test, verbose=1)
+        else:
+            print("Skipping score calc, no datapoints")
+            score = [-1,-1]
+        print("Shape of training data:", X_train.shape)
+    else:
+        print("Calculating accuracy for all WDL values")
+        score = model.evaluate(X_test, y_test, verbose=1)
+        count = X_test.shape[0]
+        print("Shape of training data:", X_train.shape)
     print('Evaluated test loss:', score[0])
     print('Evaluated test accuracy:', score[1])
-    return score
 
-def calcScoreBigData(model):
+    if returnCount:
+        return score, count
+    else:
+        return score
+
+def calcScoreBigData(model, targetWDLvalue = None):
     print("Calculating score")
     score = np.array([.0,.0])
     t0 = time.time() # start time
@@ -197,6 +240,16 @@ def calcScoreBigData(model):
     i1 = i2 = 0
 
     for X_train, _, y_train, _, percDone, loadLength in genData(test_size = 0, yieldSize = yieldSize):
+        if targetWDLvalue != None:
+            X_train_temp = []
+            y_train_temp = []
+            for i in range(len(X_train)):
+                if y_train[i][0] == targetWDLvalue:
+                    X_train_temp.append(X_train[i])
+                    y_train_temp.append(y_train[i])
+            X_train = X_train_temp
+            y_train = y_train_temp
+
         score += np.array(model.evaluate(X_train, y_train, verbose=0))
         t2 = time.time()
         tSinceLastPrint = t2 - t1
@@ -346,6 +399,7 @@ def genData(randomState = 42, test_size = 0.33, yieldSize = 1000):
 ##############################
 # load datasets
 def loadData(randomState = 42, test_size = 0.33):
+
     with h5py.File(fileName, 'r') as f:
         d = f[dataSetName]
         dt = f[dataSetWdlName]
@@ -477,6 +531,7 @@ def trainModel(resID, model, saveWeightsCheckpoints = True, saveTensorBoardLogs 
         initWeightsId = 'RND'
 
     # prepp callbacks arr
+        
     callbacksArr = []
 
     if plotDuringTraining:
@@ -561,12 +616,20 @@ def saveTrainResults(resID, model, logDir, score, copyFirstNLayers = None, freez
     print("Saving results to dir {}".format(resID))
     saveDir = 'Results/' + str(resID) + '/'
     ep = len(model.history.history['acc'])
-    createDir(saveDir + '_' +  '_4.epochs---------------' +  str(ep) + '_of_' + str(epochs) )
-    createDir(saveDir + '_' +  '_8.finalAccuracy--------' +  str(round(score[1],3)))
+    createDir(saveDir + '_' +  '_4.epochs--------------- ' +  str(ep) + '_of_' + str(epochs) )
+    createDir(saveDir + '_' +  '_8.finalAccuracy-------- ' +  str(round(score[1],4)))
+    createDir(saveDir + '_' +  '_8.finalCount-------- ' +  str(scoreCount))
     if copyFirstNLayers != None:
-        createDir(saveDir + '_' +  '_11.copyFirstNLayers----' +  str(copyFirstNLayers))
+        createDir(saveDir + '_' +  '_11.copyFirstNLayers---- ' +  str(copyFirstNLayers))
     if freeze != None:
-        createDir(saveDir + '_' +  '_12.freeze--------------' +  str(freeze))
+        createDir(saveDir + '_' +  '_12.freeze-------------- ' +  str(freeze))
+    if calcIndvWDLvalues:
+        createDir(saveDir + '_' +  '_8.lossAccuracy-------- ' +  str(round(scoreLoss[1],4)))
+        createDir(saveDir + '_' +  '_8.drawAccuracy-------- ' +  str(round(scoreDraw[1],4)))
+        createDir(saveDir + '_' +  '_8.winAccuracy--------- ' +  str(round(scoreWin[1],4)))
+        createDir(saveDir + '_' +  '_8.lossCount-------- ' +  str(scoreLossCount))
+        createDir(saveDir + '_' +  '_8.drawCount-------- ' +  str(scoreDrawCount))
+        createDir(saveDir + '_' +  '_8.winCount--------- ' +  str(scoreWinCount))
 
     #save history
     print("Saving history...")
