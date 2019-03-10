@@ -1,0 +1,537 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Parameters "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 31,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "fileName = '4PpKk.hdf5'\n",
+    "dsNameStates = '4PpKk-fullState'\n",
+    "dsNameWDLs = '4PpKk-Wdl'\n",
+    "convertStates = False\n",
+    "# fileName = 'AllStates_intVec.hdf5'\n",
+    "nPi = 4\n",
+    "nPa = 2\n",
+    "nWPa = 1\n",
+    "input_shape = (4,8,8)\n",
+    "batch_size = 256\n",
+    "epochs = 300\n",
+    "dataDiv = 1\n",
+    "num_classes = 5"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Imports"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# from __future__ import print_function\n",
+    "import keras\n",
+    "# from keras.datasets import mnist\n",
+    "from keras.models import Sequential\n",
+    "from keras.layers import Dense, Dropout, Flatten\n",
+    "from keras.layers import Conv2D, MaxPooling2D\n",
+    "from keras import backend as K\n",
+    "# import pandas as pd\n",
+    "from sklearn.model_selection import train_test_split\n",
+    "import sys\n",
+    "import h5py\n",
+    "import numpy as np"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Analysis\n",
+    "```\n",
+    "3PKk-Wdl-Buffered == 3PKk-Wdl-Seq\n",
+    "\n",
+    "4PpKk-Wdl == 4PpKk-Wdl-Buffered != 4PpKk-Wdl-retry\n",
+    "\n",
+    "5PPpKk-Wdl != 5PPpKk-Wdl-Buffered\n",
+    "    from 50.000 then buffered != 10, but wdl == 10\n",
+    "```\n",
+    "  \n",
+    "### WDL score count\n",
+    "#### 3PKk-WDL-Seq\n",
+    "[0, 0, 125024, 0, 124960]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Functions for vector to full state conversion"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 42,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def sq2hnit(sq):\n",
+    "    col = sq%8\n",
+    "    row = (sq - col)//8\n",
+    "    return col,row\n",
+    "\n",
+    "# 0: pawns\n",
+    "# 1: kings\n",
+    "def vecSt2fullSt(vecSt, nPi, nPa, nWPa):\n",
+    "    fullSt = np.zeros((4,8,8), dtype = 'bool')\n",
+    "    for i in range(nPi - 2):\n",
+    "        sq = vecSt[i]\n",
+    "        col,row = sq2hnit(sq)\n",
+    "        if i < nWPa:\n",
+    "            fullSt[0][row][col] = True\n",
+    "        else:\n",
+    "            fullSt[1][row][col] = True\n",
+    "    col,row = sq2hnit(vecSt[-2])\n",
+    "    fullSt[2][row][col] = True\n",
+    "    col,row = sq2hnit(vecSt[-1])\n",
+    "    fullSt[3][row][col] = True\n",
+    "    return fullSt \n",
+    "\n",
+    "def vecSt2fullSt_8x8x2(vecSt, nPi, nPa, nWPa):\n",
+    "    fullSt = np.zeros((8,8,2), dtype = 'int8')\n",
+    "    for i in range(nPi - 2):\n",
+    "        sq = vecSt[i]\n",
+    "        col,row = sq2hnit(sq)\n",
+    "        if i < nWPa:\n",
+    "            fullSt[row][col][0] = 1\n",
+    "        else:\n",
+    "            fullSt[row][col][0] = -1\n",
+    "    col,row = sq2hnit(vecSt[-2])\n",
+    "    fullSt[row][col][1] = 1\n",
+    "    col,row = sq2hnit(vecSt[-1])\n",
+    "    fullSt[row][col][1] = -1\n",
+    "    return fullSt \n",
+    "# nPi = 3\n",
+    "# nPa = 1\n",
+    "# nWPa = 1\n",
+    "# vecSt2fullSt(d3[0], nPi, nPa, nWPa)\n",
+    "# nPi = 5\n",
+    "# nPa = 3\n",
+    "# nWPa = 2\n",
+    "# vecSt2fullSt(d5[0], nPi, nPa, nWPa)\n",
+    "    "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 41,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "bool"
+      ]
+     },
+     "execution_count": 41,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "type(True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Load data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "4PpKk\n",
+      "4PpKk-Wdl\n",
+      "4PpKk-fullState\n"
+     ]
+    }
+   ],
+   "source": [
+    "# load datasets\n",
+    "f = h5py.File(fileName, 'a')\n",
+    "d = f[dsNameStates]\n",
+    "dt = f[dsNameWDLs]\n",
+    "# d5 = f['5PPpKk']\n",
+    "l = len(d)\n",
+    "\n",
+    "for i in f:print(i)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# count nr of each score instance\n",
+    "# wdlCounter placeholders: [-2, -1, 0, 1 ,2]\n",
+    "\n",
+    "def wdlCountingMachine(ds):\n",
+    "    wdlCounter = [0,0,0,0,0]\n",
+    "    l = len(ds)\n",
+    "    i = 0\n",
+    "    intv = l//100\n",
+    "    for wdl in ds:\n",
+    "        i += 1\n",
+    "        if i%intv == 0:\n",
+    "            sys.stdout.write(str((i*100)//l) + \" percentage\")\n",
+    "            sys.stdout.write('\\r')\n",
+    "            sys.stdout.flush()\n",
+    "        wdlCounter[wdl[0] + 2] += 1\n",
+    "    print(wdlCounter)\n",
+    "    return wdlCounter\n",
+    "# wdlCountingMachine(d3t)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 40,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "4PpKk\n",
+      "4PpKk-Wdl\n",
+      "4PpKk-fullState\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "array([[[1, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0]],\n",
+       "\n",
+       "       [[0, 1, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0]],\n",
+       "\n",
+       "       [[0, 0, 1, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0]],\n",
+       "\n",
+       "       [[0, 0, 0, 1, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0],\n",
+       "        [0, 0, 0, 0, 0, 0, 0, 0]]], dtype=int8)"
+      ]
+     },
+     "execution_count": 40,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "for i in f:print(i)\n",
+    "f['4PpKk-fullState'][0]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 45,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "KeyboardInterrupt",
+     "evalue": "",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mKeyboardInterrupt\u001b[0m                         Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-45-7e743ddedcff>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[0;31m# del f['4PpKk-fullState']\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      2\u001b[0m \u001b[0md\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mf\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;34m'4PpKk'\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 3\u001b[0;31m \u001b[0mX\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mnp\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0marray\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0mvecSt2fullSt\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mvecSt\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0mnPi\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mnPa\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mnWPa\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;32mfor\u001b[0m \u001b[0mvecSt\u001b[0m \u001b[0;32min\u001b[0m \u001b[0md\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0ml\u001b[0m\u001b[0;34m//\u001b[0m\u001b[0mdataDiv\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      4\u001b[0m \u001b[0;31m# f.create_dataset('4PpKk-fullState', data = X)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      5\u001b[0m \u001b[0;31m# for i in f:print(i)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m<ipython-input-45-7e743ddedcff>\u001b[0m in \u001b[0;36m<listcomp>\u001b[0;34m(.0)\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[0;31m# del f['4PpKk-fullState']\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      2\u001b[0m \u001b[0md\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mf\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;34m'4PpKk'\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 3\u001b[0;31m \u001b[0mX\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mnp\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0marray\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0mvecSt2fullSt\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mvecSt\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0mnPi\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mnPa\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mnWPa\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;32mfor\u001b[0m \u001b[0mvecSt\u001b[0m \u001b[0;32min\u001b[0m \u001b[0md\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0ml\u001b[0m\u001b[0;34m//\u001b[0m\u001b[0mdataDiv\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      4\u001b[0m \u001b[0;31m# f.create_dataset('4PpKk-fullState', data = X)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      5\u001b[0m \u001b[0;31m# for i in f:print(i)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m<ipython-input-42-ad2b7457130a>\u001b[0m in \u001b[0;36mvecSt2fullSt\u001b[0;34m(vecSt, nPi, nPa, nWPa)\u001b[0m\n\u001b[1;32m     10\u001b[0m     \u001b[0;32mfor\u001b[0m \u001b[0mi\u001b[0m \u001b[0;32min\u001b[0m \u001b[0mrange\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mnPi\u001b[0m \u001b[0;34m-\u001b[0m \u001b[0;36m2\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     11\u001b[0m         \u001b[0msq\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mvecSt\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0mi\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 12\u001b[0;31m         \u001b[0mcol\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0mrow\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0msq2hnit\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0msq\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     13\u001b[0m         \u001b[0;32mif\u001b[0m \u001b[0mi\u001b[0m \u001b[0;34m<\u001b[0m \u001b[0mnWPa\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     14\u001b[0m             \u001b[0mfullSt\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;36m0\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0mrow\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0mcol\u001b[0m\u001b[0;34m]\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;32mTrue\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m<ipython-input-42-ad2b7457130a>\u001b[0m in \u001b[0;36msq2hnit\u001b[0;34m(sq)\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[0;32mdef\u001b[0m \u001b[0msq2hnit\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0msq\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      2\u001b[0m     \u001b[0mcol\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0msq\u001b[0m\u001b[0;34m%\u001b[0m\u001b[0;36m8\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m----> 3\u001b[0;31m     \u001b[0mrow\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;34m(\u001b[0m\u001b[0msq\u001b[0m \u001b[0;34m-\u001b[0m \u001b[0mcol\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m//\u001b[0m\u001b[0;36m8\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m      4\u001b[0m     \u001b[0;32mreturn\u001b[0m \u001b[0mcol\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0mrow\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m      5\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mKeyboardInterrupt\u001b[0m: "
+     ]
+    }
+   ],
+   "source": [
+    "# del f['4PpKk-fullState']\n",
+    "d = f['4PpKk']\n",
+    "X = np.array([vecSt2fullSt(vecSt,nPi, nPa, nWPa) for vecSt in d[:l//dataDiv]])\n",
+    "# f.create_dataset('4PpKk-fullState', data = X)\n",
+    "# for i in f:print(i)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "if convertStates:\n",
+    "    X = np.array([vecSt2fullSt(vecSt,nPi, nPa, nWPa) for vecSt in d[:l//dataDiv]])\n",
+    "else:\n",
+    "    X = d[:1//dataDiv]\n",
+    "\n",
+    "y = dt[:l//dataDiv]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "ename": "ValueError",
+     "evalue": "Found input variables with inconsistent numbers of samples: [1, 15249024]",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mValueError\u001b[0m                                Traceback (most recent call last)",
+      "\u001b[0;32m<ipython-input-8-dea611e03200>\u001b[0m in \u001b[0;36m<module>\u001b[0;34m\u001b[0m\n\u001b[0;32m----> 1\u001b[0;31m \u001b[0mX_train\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mX_test\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0my_train\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0my_test\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mtrain_test_split\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mX\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0my\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mtest_size\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m0.33\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mrandom_state\u001b[0m\u001b[0;34m=\u001b[0m\u001b[0;36m42\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m",
+      "\u001b[0;32m~/anaconda3/envs/endnet/lib/python3.6/site-packages/sklearn/model_selection/_split.py\u001b[0m in \u001b[0;36mtrain_test_split\u001b[0;34m(*arrays, **options)\u001b[0m\n\u001b[1;32m   2182\u001b[0m         \u001b[0mtest_size\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;36m0.25\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   2183\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m-> 2184\u001b[0;31m     \u001b[0marrays\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mindexable\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0marrays\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m   2185\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   2186\u001b[0m     \u001b[0;32mif\u001b[0m \u001b[0mshuffle\u001b[0m \u001b[0;32mis\u001b[0m \u001b[0;32mFalse\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/anaconda3/envs/endnet/lib/python3.6/site-packages/sklearn/utils/validation.py\u001b[0m in \u001b[0;36mindexable\u001b[0;34m(*iterables)\u001b[0m\n\u001b[1;32m    258\u001b[0m         \u001b[0;32melse\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    259\u001b[0m             \u001b[0mresult\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mappend\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mnp\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0marray\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mX\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m--> 260\u001b[0;31m     \u001b[0mcheck_consistent_length\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0mresult\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m    261\u001b[0m     \u001b[0;32mreturn\u001b[0m \u001b[0mresult\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    262\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;32m~/anaconda3/envs/endnet/lib/python3.6/site-packages/sklearn/utils/validation.py\u001b[0m in \u001b[0;36mcheck_consistent_length\u001b[0;34m(*arrays)\u001b[0m\n\u001b[1;32m    233\u001b[0m     \u001b[0;32mif\u001b[0m \u001b[0mlen\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0muniques\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m>\u001b[0m \u001b[0;36m1\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    234\u001b[0m         raise ValueError(\"Found input variables with inconsistent numbers of\"\n\u001b[0;32m--> 235\u001b[0;31m                          \" samples: %r\" % [int(l) for l in lengths])\n\u001b[0m\u001b[1;32m    236\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m    237\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n",
+      "\u001b[0;31mValueError\u001b[0m: Found input variables with inconsistent numbers of samples: [1, 15249024]"
+     ]
+    }
+   ],
+   "source": [
+    "X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print(y_test.shape)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print('X_train shape:', X_train.shape)\n",
+    "print('y_train shape:', y_train.shape)\n",
+    "print('X_test shape:', X_test.shape)\n",
+    "print('y_test shape:', y_test.shape)\n",
+    "print(X_train.shape[0], 'train samples')\n",
+    "print(X_test.shape[0], 'test samples')\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# convert class vectors to binary class matrices\n",
+    "y_train = keras.utils.to_categorical(y_train, num_classes)\n",
+    "y_test = keras.utils.to_categorical(y_test, num_classes)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Create Keras model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import keras.backend as K\n",
+    "# K.set_floatx('float16')\n",
+    "# K.set_epsilon(1e-4) #default is 1e-7\n",
+    "K.set_floatx('float32')\n",
+    "K.set_epsilon(1e-7) #default is 1e-7"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "model = Sequential()\n",
+    "filterDivider = 2\n",
+    "l1filters = 64//filterDivider\n",
+    "l2filters = 96//filterDivider\n",
+    "l3filters = 256//filterDivider\n",
+    "print(l1filters)\n",
+    "print(l2filters)\n",
+    "print(l3filters)\n",
+    "\n",
+    "model.add(Conv2D(l1filters, kernel_size=(3, 3),\n",
+    "                 padding='valid',\n",
+    "                 activation='relu',\n",
+    "                 data_format = \"channels_first\",\n",
+    "#                  kernel_initializer = \n",
+    "                 input_shape=input_shape))\n",
+    "model.add(Conv2D(l2filters, kernel_size=(3, 3),\n",
+    "                 padding='valid',\n",
+    "                 activation='relu'))\n",
+    "model.add(Conv2D(l3filters, kernel_size=(3, 3),\n",
+    "                 padding='valid',\n",
+    "                 activation='relu'))\n",
+    "model.add(Flatten())\n",
+    "model.add(Dense(num_classes, activation='softmax'))\n",
+    "model.summary()\n",
+    "model.save_weights('tempWeights.hdf5')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "model.compile(loss=keras.losses.categorical_crossentropy,\n",
+    "              optimizer=keras.optimizers.Adadelta(),\n",
+    "              metrics=['accuracy'])\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# model.save_weights('tempWeights.hdf5')\n",
+    "# model.load_weights('tempWeights.hdf5')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "multiGPU = False\n",
+    "whichGPU = 0\n",
+    "\n",
+    "if(multiGPU):\n",
+    "    from keras.utils.training_utils import multi_gpu_model\n",
+    "else:\n",
+    "    import os\n",
+    "    os.environ[\"CUDA_DEVICE_ORDER\"]=\"PCI_BUS_ID\"\n",
+    "    # The GPU id to use, usually either \"0\" or \"1\"\n",
+    "    os.environ[\"CUDA_VISIBLE_DEVICES\"] = str(whichGPU)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "scrolled": false
+   },
+   "outputs": [],
+   "source": [
+    "batch_size = 512\n",
+    "model.fit(X_train, y_train,\n",
+    "      batch_size=batch_size,\n",
+    "          epochs=epochs,\n",
+    "          verbose=1,\n",
+    "          validation_data=(X_test, y_test))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "score = model.evaluate(X_test, y_test, verbose=0)\n",
+    "print('Test loss:', score[0])\n",
+    "print('Test accuracy:', score[1])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "model.save_weights('4PpKk_1_weights.hdf5')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.6.8"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}

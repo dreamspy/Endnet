@@ -106,7 +106,7 @@ venv.bak/
 *.hdf5
 
 #misc
-1.old
+#1.old
 1.data_done
 fitTemp
 syzygy
@@ -115,7 +115,7 @@ syzygy
 *gitign
 
 # results
-Results
+# Results
 
 #mac
 .DS_Store
@@ -124,8 +124,5 @@ Results
 #some hidden files
 ._*
 
-#old files
-mainCode/1.old
-
 #log files
-**/logs*
+#**/logs*
